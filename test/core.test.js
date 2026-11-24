@@ -273,3 +273,62 @@ test('importFromBudgetWorkbook convierte maestro, reglas y FC', () => {
   assert.equal(sup.length, 1);
   assert.equal(sup[0].importe, 250);
 });
+
+test('detectManualEdits: un cambio hecho a mano en la hoja se respeta como manual', () => {
+  const rules = [{ patron: 'SUPER', tipologia: 'Supermercado' }];
+  const first = FB.classifyAll([mov('2026-01-03', 'SUPER UNO', -30)], rules, PARTIDAS).movimientos;
+  assert.equal(first[0].asignada, 'Supermercado');
+  // alguien cambia la columna CLASIFICACION en la hoja
+  const edited = [Object.assign({}, first[0], { tipologia: 'Ocio Familia' })];
+  const again = FB.classifyAll(edited, rules, PARTIDAS).movimientos;
+  assert.equal(again[0].estado, 'manual');
+  assert.equal(again[0].tipologia, 'Ocio Familia');
+  // si se cambia la regla (no el movimiento), el movimiento sigue a la regla
+  const r2 = FB.classifyAll(first, [{ patron: 'SUPER', tipologia: 'Mercado' }], PARTIDAS.concat([{ tipologia: 'Mercado', bloque: 'DESPENSA', tipo: 'Gasto' }])).movimientos;
+  assert.equal(r2[0].estado, 'regla');
+  assert.equal(r2[0].tipologia, 'Mercado');
+});
+
+function monthly(t, from, to, amount, day) {
+  const out = [];
+  for (let m = from; m <= to; m++) out.push(mov('2026-' + String(m).padStart(2, '0') + '-' + (day || '10'), 'X' + t, amount, { tipologia: t }));
+  return out;
+}
+
+test('forecast: tendencia ajusta el presupuesto restante al ritmo real', () => {
+  const movs = monthly('Supermercado', 1, 9, -300);
+  const presupuesto = []; for (let m = 1; m <= 12; m++) presupuesto.push({ anio: 2026, mes: m, tipologia: 'Supermercado', importe: m === 12 ? 400 : 200 });
+  const f = FB.forecast({ year: 2026, partidas: PARTIDAS, movimientos: movs, presupuesto });
+  const s = f.filas.find((x) => x.tipologia === 'Supermercado');
+  assert.equal(f.hasta, 9);
+  assert.equal(s.metodo, 'tendencia');
+  assert.deepEqual(s.prevision.slice(9), [300, 300, 600], 'conserva la forma del presupuesto (diciembre más alto) × 1,5');
+  assert.equal(s.cierre, 2700 + 1200);
+});
+
+test('forecast: un cobro extra aislado no dispara la tendencia', () => {
+  const movs = monthly('Salario A', 1, 9, 2000).concat([mov('2026-09-15', 'EXTRA', 2000, { tipologia: 'Salario A' })]);
+  const presupuesto = []; for (let m = 1; m <= 12; m++) presupuesto.push({ anio: 2026, mes: m, tipologia: 'Salario A', importe: 2000 });
+  const s = FB.forecast({ year: 2026, partidas: PARTIDAS, movimientos: movs, presupuesto }).filas.find((x) => x.tipologia === 'Salario A');
+  assert.deepEqual(s.prevision.slice(9), [2000, 2000, 2000]);
+});
+
+test('forecast: estacional usa el año anterior escalado', () => {
+  const ly = [];
+  for (let m = 1; m <= 12; m++) ly.push(mov('2025-' + String(m).padStart(2, '0') + '-10', 'GASCO', m >= 11 || m <= 2 ? -200 : -50, { tipologia: 'Luz' }));
+  const cur = []; for (let m = 1; m <= 10; m++) cur.push(mov('2026-' + String(m).padStart(2, '0') + '-10', 'GASCO', m <= 2 ? -220 : -55, { tipologia: 'Luz' }));
+  const s = FB.forecast({ year: 2026, partidas: PARTIDAS, movimientos: ly.concat(cur), presupuesto: [] }).filas.find((x) => x.tipologia === 'Luz');
+  assert.equal(s.metodo, 'estacional');
+  assert.deepEqual(s.prevision.slice(10), [220, 220], 'noviembre y diciembre caros como el año pasado, ×1,1');
+});
+
+test('forecast: lo esporádico asume el presupuesto y lo sin clasificar no se proyecta', () => {
+  const movs = monthly('Supermercado', 1, 6, -100).concat([mov('2026-03-03', 'RARO', -80)]);
+  const presupuesto = [{ anio: 2026, mes: 8, tipologia: 'Ocio Familia', importe: 900 }];
+  const f = FB.forecast({ year: 2026, partidas: PARTIDAS, movimientos: movs, presupuesto });
+  assert.equal(f.filas.find((x) => x.tipologia === 'Ocio Familia').cierre, 900);
+  const sin = f.filas.find((x) => x.tipologia === FB.SIN_GASTO);
+  assert.equal(sin.metodo, 'sin-proyeccion');
+  assert.equal(sin.cierre, 80);
+  assert.equal(f.totales.Gasto.cierre, 600 + 600 + 900 + 80);
+});

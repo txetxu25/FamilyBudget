@@ -5,9 +5,8 @@
   // ------------------------------------------------------------ estado + API
   var S = {
     data: null, year: null, tab: 'seguimiento',
-    seg: { modo: 'acum', hasta: null },
+    seg: { modo: 'acum', hasta: null, verTodas: false },
     mov: { filtro: 'pendientes', mes: 0, q: '', partida: '' },
-    ins: { modo: 'acum', mes: null },
     pres: { year: null, draft: null }
   };
 
@@ -95,41 +94,45 @@
       return '<div class="r"><span>' + (r[2] ? '<i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:' + r[2] + '"></i>' : '') + esc(r[0]) + '</span><span class="num">' + esc(r[1]) + '</span></div>';
     }).join('');
   }
+  // textura para la previsión: misma tinta que "real", rayada a 45°, para no depender solo del color
+  var HATCH = '<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+    '<rect width="6" height="6" fill="color-mix(in srgb, var(--real) 22%, var(--surface))"/><rect width="2.5" height="6" fill="var(--real)" opacity="0.75"/></pattern></defs>';
 
-  /** Barras agrupadas: real vs presupuesto por mes. */
-  function barChart(real, ppto, hasta, label) {
+  /** Barras agrupadas por mes: presupuesto, y real (o previsión rayada en los meses que faltan). */
+  function barChart(real, ppto, prev, hasta, label) {
     var W = 640, H = 220, L = 44, R = 6, T = 10, B = 24;
-    var max = niceMax(Math.max.apply(null, real.concat(ppto)) * 1.05);
+    var serie = real.map(function (v, i) { return i < hasta ? v : prev[i]; });
+    var max = niceMax(Math.max.apply(null, serie.concat(ppto)) * 1.05);
     var cw = (W - L - R) / 12, bw = Math.min(16, (cw - 6) / 2);
     var y = function (v) { return T + (H - T - B) * (1 - Math.max(0, v) / max); };
-    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">';
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">' + HATCH;
     for (var g = 0; g <= 4; g++) {
       var gv = max * g / 4, gy = y(gv);
       s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + gy + '" y2="' + gy + '" stroke="var(--' + (g ? 'grid' : 'axis') + ')" stroke-width="1"/>';
       s += '<text x="' + (L - 6) + '" y="' + (gy + 4) + '" text-anchor="end">' + kfmt(gv) + '</text>';
     }
+    var bar = function (x, v, fill) {
+      if (!v || v <= 0) return '';
+      var yy = y(v), h = (H - B) - yy, r = Math.min(4, h);
+      return '<path d="M' + x + ',' + (H - B) + 'V' + (yy + r) + 'Q' + x + ',' + yy + ' ' + (x + r) + ',' + yy + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + yy + ' ' + (x + bw) + ',' + (yy + r) + 'V' + (H - B) + 'Z" fill="' + fill + '"/>';
+    };
     for (var i = 0; i < 12; i++) {
       var cx = L + cw * i + cw / 2, has = i < hasta;
-      var bar = function (x, v, color, op) {
-        if (!v) return '';
-        var yy = y(v), h = (H - B) - yy;
-        var r = Math.min(4, h);
-        return '<path d="M' + x + ',' + (H - B) + 'V' + (yy + r) + 'Q' + x + ',' + yy + ' ' + (x + r) + ',' + yy + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + yy + ' ' + (x + bw) + ',' + (yy + r) + 'V' + (H - B) + 'Z" fill="' + color + '" opacity="' + (op || 1) + '"/>';
-      };
-      s += bar(cx - bw - 1, ppto[i], 'var(--ppto)', has ? 1 : 0.55);
-      if (has) s += bar(cx + 1, real[i], 'var(--real)');
+      s += bar(cx - bw - 1, ppto[i], 'var(--ppto)');
+      s += bar(cx + 1, serie[i], has ? 'var(--real)' : 'url(#hatch)');
       s += '<text x="' + cx + '" y="' + (H - 6) + '" text-anchor="middle">' + FB.MESES_CORTO[i] + '</text>';
-      var d = real[i] - ppto[i];
-      var t = tipRows(mesLabel(i + 1), has ? [['Real', eur(real[i]), 'var(--real)'], ['Presupuesto', eur(ppto[i]), 'var(--ppto)'], ['Desviación', eurS(d)]] : [['Presupuesto', eur(ppto[i]), 'var(--ppto)'], ['Real', 'sin datos']]);
+      var t = tipRows(mesLabel(i + 1), has
+        ? [['Real', eur(real[i]), 'var(--real)'], ['Presupuesto', eur(ppto[i]), 'var(--ppto)'], ['Desviación', eurS(real[i] - ppto[i])]]
+        : [['Previsión', eur(prev[i]), 'var(--real)'], ['Presupuesto', eur(ppto[i]), 'var(--ppto)'], ['Diferencia', eurS(prev[i] - ppto[i])]]);
       s += '<rect x="' + (L + cw * i) + '" y="' + T + '" width="' + cw + '" height="' + (H - T - B) + '" fill="transparent" data-tip="' + esc(t) + '"/>';
     }
     return s + '</svg>';
   }
 
-  /** Líneas: acumulado real vs presupuesto. */
-  function lineChart(real, ppto, hasta, label) {
-    var W = 640, H = 200, L = 50, R = 10, T = 12, B = 24;
-    var all = real.slice(0, hasta).concat(ppto);
+  /** Líneas acumuladas: presupuesto, real y previsión (discontinua) hasta diciembre. */
+  function lineChart(serie, ppto, hasta, label) {
+    var W = 640, H = 210, L = 50, R = 10, T = 12, B = 24;
+    var all = serie.concat(ppto);
     var mx = Math.max.apply(null, all.concat([0])), mn = Math.min.apply(null, all.concat([0]));
     var step = niceMax(((mx - mn) || 1) / 4);
     var lo = Math.floor(mn / step) * step, hi = Math.ceil(mx / step) * step;
@@ -140,18 +143,24 @@
     var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">';
     for (var g = 0; g <= nTicks; g++) {
       var gv = lo + step * g;
-      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(gv) + '" y2="' + y(gv) + '" stroke="var(--grid)"/>';
+      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(gv) + '" y2="' + y(gv) + '" stroke="var(--' + (gv === 0 ? 'axis' : 'grid') + ')"/>';
       s += '<text x="' + (L - 6) + '" y="' + (y(gv) + 4) + '" text-anchor="end">' + kfmt(gv) + '</text>';
     }
-    if (lo < 0) s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="var(--axis)"/>';
-    var path = function (arr, n) { return arr.slice(0, n).map(function (v, i) { return (i ? 'L' : 'M') + x(i) + ',' + y(v); }).join(''); };
-    s += '<path d="' + path(ppto, 12) + '" fill="none" stroke="var(--ppto)" stroke-width="2" stroke-dasharray="5 4"/>';
-    s += '<path d="' + path(real, hasta) + '" fill="none" stroke="var(--real)" stroke-width="2"/>';
+    var path = function (arr, from, to) { var d = ''; for (var i = from; i <= to; i++) d += (i === from ? 'M' : 'L') + x(i) + ',' + y(arr[i]); return d; };
+    s += '<path d="' + path(ppto, 0, 11) + '" fill="none" stroke="var(--ppto)" stroke-width="2"/>';
+    if (hasta < 12 && hasta > 0) s += '<path d="' + path(serie, hasta - 1, 11) + '" fill="none" stroke="var(--real)" stroke-width="2" stroke-dasharray="5 4"/>';
+    if (hasta > 0) s += '<path d="' + path(serie, 0, hasta - 1) + '" fill="none" stroke="var(--real)" stroke-width="2"/>';
     for (var i = 0; i < 12; i++) {
       s += '<text x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + FB.MESES_CORTO[i] + '</text>';
-      if (i < hasta) s += '<circle cx="' + x(i) + '" cy="' + y(real[i]) + '" r="4" fill="var(--real)" stroke="var(--surface)" stroke-width="2"/>';
-      var t = tipRows('Hasta ' + mesLabel(i + 1), i < hasta ? [['Real', eur(real[i]), 'var(--real)'], ['Presupuesto', eur(ppto[i]), 'var(--ppto)'], ['Diferencia', eurS(real[i] - ppto[i])]] : [['Presupuesto', eur(ppto[i]), 'var(--ppto)']]);
-      s += '<rect x="' + (x(i) - (W - L - R) / 22) + '" y="' + T + '" width="' + ((W - L - R) / 11) + '" height="' + (H - T - B) + '" fill="transparent" data-tip="' + esc(t) + '"/>';
+      if (i < hasta) s += '<circle cx="' + x(i) + '" cy="' + y(serie[i]) + '" r="4" fill="var(--real)" stroke="var(--surface)" stroke-width="2"/>';
+    }
+    if (hasta < 12) {
+      s += '<circle cx="' + x(11) + '" cy="' + y(serie[11]) + '" r="4" fill="var(--surface)" stroke="var(--real)" stroke-width="2"/>';
+      s += '<text x="' + (x(11) - 6) + '" y="' + (y(serie[11]) - 9) + '" text-anchor="end" style="fill:var(--ink-2);font-weight:600">' + kfmt(serie[11]) + '</text>';
+    }
+    for (var k = 0; k < 12; k++) {
+      var t = tipRows('Hasta ' + mesLabel(k + 1), [[k < hasta ? 'Real' : 'Previsión', eur(serie[k]), 'var(--real)'], ['Presupuesto', eur(ppto[k]), 'var(--ppto)'], ['Diferencia', eurS(serie[k] - ppto[k])]]);
+      s += '<rect x="' + (x(k) - (W - L - R) / 22) + '" y="' + T + '" width="' + ((W - L - R) / 11) + '" height="' + (H - T - B) + '" fill="transparent" data-tip="' + esc(t) + '"/>';
     }
     return s + '</svg>';
   }
@@ -185,12 +194,11 @@
   // ------------------------------------------------------------ pestañas
   var ICONS = {
     seguimiento: '<path d="M4 19V10M10 19V5M16 19v-7M22 19H2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
-    insights: '<path d="M12 3a6 6 0 0 0-3.5 10.9V17h7v-3.1A6 6 0 0 0 12 3ZM9.5 21h5" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
     movimientos: '<path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
     presupuesto: '<rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 9h18M9 9v11" stroke="currentColor" stroke-width="2"/>',
     ajustes: '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
   };
-  var TABS = [['seguimiento', 'Seguimiento'], ['insights', 'Insights'], ['movimientos', 'Movimientos'], ['presupuesto', 'Presupuesto'], ['ajustes', 'Ajustes']];
+  var TABS = [['seguimiento', 'Seguimiento'], ['movimientos', 'Movimientos'], ['presupuesto', 'Presupuesto'], ['ajustes', 'Ajustes']];
   function renderTabs() {
     var n = pendingCount();
     $('#tabs').innerHTML = TABS.map(function (t) {
@@ -210,27 +218,42 @@
     hideTip();
     renderTabs();
     var v = $('#view');
-    var fn = { seguimiento: viewSeguimiento, insights: viewInsights, movimientos: viewMovimientos, presupuesto: viewPresupuesto, ajustes: viewAjustes }[S.tab];
+    var fn = { seguimiento: viewSeguimiento, movimientos: viewMovimientos, presupuesto: viewPresupuesto, ajustes: viewAjustes }[S.tab] || viewSeguimiento;
     try { fn(v); } catch (e) { v.innerHTML = '<div class="banner err">' + esc(e.message) + '</div>'; console.error(e); }
     bindTips(v);
   }
 
-  // ------------------------------------------------------------ Seguimiento
+  // ------------------------------------------------------------ Seguimiento (con insights y previsión)
   function sumR(a, from, to) { var s = 0; for (var i = from; i <= to; i++) s += a[i] || 0; return s; }
+  var METODO_TXT = { estacional: 'estacional', tendencia: 'tendencia', presupuesto: 'presupuesto', 'sin-proyeccion': 'no se proyecta' };
+
+  function insightCard(e, desde, hasta) {
+    var tipoTxt = e.tipo === 'Ingreso' ? (e.desv < 0 ? 'Ingresáis menos' : 'Ingresáis más') : (e.desv > 0 ? 'Gastáis más' : 'Gastáis menos');
+    return '<div class="card ins"><div class="row spread"><h3>' + esc(e.tipologia) + ' <span class="muted small">' + esc(e.bloque || '') + '</span></h3>' +
+      '<span class="st ' + (e.impacto > 0 ? 'alerta' : 'ok') + '">' + (e.impacto > 0 ? 'Os cuesta ' : 'Os ahorra ') + eur(Math.abs(e.impacto)) + '</span></div>' +
+      '<p class="sub num" style="margin-top:4px">' + tipoTxt + ': ' + eur(e.real) + ' frente a ' + eur(e.ppto) + ' previsto · ' + e.n + ' movimientos' +
+      (e.cierre != null ? ' · cierre previsto ' + eur(e.cierre) + ' de ' + eur(e.pptoAnual) : '') + '</p>' +
+      causesHtml(e, true) + '<div class="row" style="margin-top:10px"><button class="btn small" data-movs="' + esc(e.tipologia) + '" data-mes="' + (desde === hasta ? hasta : 0) + '">Ver movimientos</button></div></div>';
+  }
+
   function viewSeguimiento(v) {
     var last = lastMonth();
     var hasta = Math.min(S.seg.hasta || last, 12);
-    var sm = summary(hasta);
+    var U = umbrales();
+    var base = { year: S.year, partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, umbrales: U };
+    var sm = FB.summarize(Object.assign({ hasta: hasta }, base));
+    var fc = FB.forecast(Object.assign({ hasta: hasta }, base));
+    var fcBy = {}; fc.filas.forEach(function (f) { fcBy[f.tipologia] = f; });
     var acum = S.seg.modo === 'acum', d0 = acum ? 0 : hasta - 1, d1 = hasta - 1;
     var T = sm.totales;
     var g = { r: sumR(T.Gasto.real, d0, d1), p: sumR(T.Gasto.ppto, d0, d1) };
     var ing = { r: sumR(T.Ingreso.real, d0, d1), p: sumR(T.Ingreso.ppto, d0, d1) };
     var net = { r: sumR(sm.neto.real, d0, d1), p: sumR(sm.neto.ppto, d0, d1) };
-    var cl = sm.clasificacion, pct = cl.total ? Math.round(100 * (cl.regla + cl.manual + cl.propuesta) / cl.total) : 100;
     var pend = pendingCount();
     var integ = FB.checkBalance(S.data.movimientos.filter(function (m) { return m.fecha.slice(0, 4) === String(S.year); }));
     var saldo = null, lastMov = null;
     FB.chronoSort(S.data.movimientos).forEach(function (m) { if (m.saldo != null) { saldo = m.saldo; lastMov = m.fecha; } });
+    var periodo = acum ? 'enero – ' + mesLabel(hasta) : mesLabel(hasta);
 
     var h = '<div class="row spread" style="margin-bottom:12px">' +
       '<div class="seg" role="group" aria-label="Periodo"><button data-m="acum" aria-pressed="' + acum + '">Acumulado</button><button data-m="mes" aria-pressed="' + !acum + '">Solo el mes</button></div>' +
@@ -241,56 +264,82 @@
         return 'El ' + r.fecha.split('-').reverse().join('/') + ' el banco arranca con ' + eur(r.saldoBanco, 1) + ' pero los extractos llevan ' + eur(r.saldoEsperado, 1) + ' (' + eurS(r.diferencia) + '). Falta algún movimiento entre extractos.';
       }).join(' ') + '</div>';
     }
-    if (pend) h += '<div class="banner" style="cursor:pointer" id="go-pend"><b>' + pend + ' movimientos por revisar.</b> Hasta que los clasifiques, cuentan en «Sin clasificar». Revisar →</div>';
+    if (pend) h += '<div class="banner" style="cursor:pointer" id="go-pend"><b>' + pend + ' movimientos por revisar.</b> Hasta que los clasifiquéis cuentan en «Sin clasificar» y no entran en la previsión. Revisar →</div>';
 
-    var kpi = function (label, real, ppto, tipo, extra) {
-      var d = real - ppto, est = FB.status(tipo, real, ppto, umbrales());
+    var kpi = function (label, real, ppto, tipo, foot) {
+      var d = real - ppto, est = FB.status(tipo, real, ppto, U);
       return '<div class="kpi"><div class="label">' + label + '</div><div class="value num">' + eur(real) + '</div>' +
-        '<div class="foot"><span class="num">Ppto ' + eur(ppto) + ' · ' + eurS(d) + '</span>' + (extra || stChip(est)) + '</div></div>';
+        '<div class="foot"><span class="num">Ppto ' + eur(ppto) + ' · ' + eurS(d) + '</span>' + stChip(est) + '</div>' + (foot ? '<div class="foot" style="margin-top:4px">' + foot + '</div>' : '') + '</div>';
     };
+    var cierreTxt = function (t) { var X = fc.totales[t]; return '<span class="num">→ cierre ' + eur(X.cierre) + ' (ppto ' + eur(X.pptoAnual) + ')</span>'; };
+    var estCierre = FB.status('Ingreso', fc.neto.cierre, fc.neto.pptoAnual, U);
     h += '<div class="kpis">' +
-      kpi('Gasto ' + (acum ? 'acumulado' : mesLabel(hasta)), g.r, g.p, 'Gasto') +
-      kpi('Ingresos', ing.r, ing.p, 'Ingreso') +
-      kpi('Ahorro (ingresos − gastos − traspasos)', net.r, net.p, 'Ingreso') +
-      '<div class="kpi"><div class="label">Clasificado</div><div class="value num">' + pct + '%</div><div class="foot">' +
-      (saldo != null ? '<span class="num">Saldo ' + eur(saldo) + ' (' + lastMov.split('-').reverse().slice(0, 2).join('/') + ')</span>' : '') + '</div></div></div>';
+      kpi('Gasto · ' + periodo, g.r, g.p, 'Gasto', cierreTxt('Gasto')) +
+      kpi('Ingresos · ' + periodo, ing.r, ing.p, 'Ingreso', cierreTxt('Ingreso')) +
+      kpi('Ahorro · ' + periodo, net.r, net.p, 'Ingreso', saldo != null ? '<span class="num">Saldo en cuenta ' + eur(saldo) + ' (' + lastMov.split('-').reverse().slice(0, 2).join('/') + ')</span>' : '') +
+      '<div class="kpi"><div class="label">Ahorro previsto a diciembre</div><div class="value num">' + eur(fc.neto.cierre) + '</div>' +
+      '<div class="foot"><span class="num">Ppto ' + eur(fc.neto.pptoAnual) + ' · ' + eurS(fc.neto.cierre - fc.neto.pptoAnual) + '</span>' + stChip(estCierre) + '</div>' +
+      '<div class="foot" style="margin-top:4px">Extrapolado de lo ocurrido hasta ' + mesLabel(hasta) + '</div></div></div>';
 
-    h += '<div class="grid two"><div class="card"><h2>Gasto mensual</h2><p class="sub">Real frente a presupuesto. Toca una barra para ver el detalle.</p>' +
-      '<div class="legend"><span><i style="background:var(--real)"></i>Real</span><span><i style="background:var(--ppto)"></i>Presupuesto</span></div>' +
-      '<div class="chart">' + barChart(T.Gasto.real, T.Gasto.ppto, sm.hasta, 'Gasto mensual real frente a presupuesto') + '</div></div>';
+    // ---- qué está pasando (insights)
+    var top = FB.topDeviations(Object.assign({ desde: acum ? 1 : hasta, hasta: hasta, minimo: U.minimo, limit: 10 }, base));
+    top.forEach(function (e) { var f = fcBy[e.tipologia]; if (f) { e.cierre = f.cierre; e.pptoAnual = f.pptoAnual; } });
+    var peor = top.filter(function (e) { return e.impacto > 0; }), mejor = top.filter(function (e) { return e.impacto < 0; });
+    var dn = net.r - net.p, dc = fc.neto.cierre - fc.neto.pptoAnual;
+    var palancas = fc.palancas.filter(function (p) { return p.impacto > 0; }).slice(0, 3);
+    h += '<div class="card"><h2>' + (dn >= 0 ? 'Vais ' + eur(dn) + ' mejor' : 'Vais ' + eur(-dn) + ' peor') + ' que el presupuesto (' + periodo + ')</h2>' +
+      '<p class="sub" style="margin-bottom:0">Al ritmo actual cerraréis el año con ' + eur(fc.neto.cierre) + ' de ahorro, ' + (dc >= 0 ? eur(dc) + ' por encima' : eur(-dc) + ' por debajo') + ' de lo presupuestado.' +
+      (palancas.length ? ' Lo que más empuja en contra: ' + palancas.map(function (p) { return esc(p.tipologia) + ' (' + eurS(-p.impacto) + ')'; }).join(', ') + '.' : '') + '</p></div>';
+    var MAX = S.seg.verTodas ? 99 : 3;
+    if (peor.length) h += '<h2 class="section">En contra</h2>' + peor.slice(0, MAX).map(function (e) { return insightCard(e, acum ? 1 : hasta, hasta); }).join('');
+    if (mejor.length) h += '<h2 class="section">A favor</h2>' + mejor.slice(0, S.seg.verTodas ? 99 : 2).map(function (e) { return insightCard(e, acum ? 1 : hasta, hasta); }).join('');
+    if (peor.length > 3 || mejor.length > 2) h += '<div class="row" style="justify-content:center;margin:-4px 0 14px"><button class="btn small ghost" id="ver-todas">' + (S.seg.verTodas ? 'Ver menos' : 'Ver todas las desviaciones (' + top.length + ')') + '</button></div>';
+    if (!top.length) h += '<p class="empty">Ninguna partida se desvía más de ' + eur(U.minimo) + ' en este periodo.</p>';
+
+    // ---- gráficos
+    h += '<div class="grid two"><div class="card"><h2>Gasto mensual</h2><p class="sub">Real y, en los meses que faltan, previsión. Toca una barra para ver el detalle.</p>' +
+      '<div class="legend"><span><i style="background:var(--real)"></i>Real</span><span><i style="background:repeating-linear-gradient(135deg,var(--real) 0 2px,transparent 2px 4px)"></i>Previsión</span><span><i style="background:var(--ppto)"></i>Presupuesto</span></div>' +
+      '<div class="chart">' + barChart(T.Gasto.real, T.Gasto.ppto, fc.totales.Gasto.serie, sm.hasta, 'Gasto mensual real y previsto frente a presupuesto') + '</div></div>';
     var cr = [], cp = [], a = 0, b = 0;
-    for (var i = 0; i < 12; i++) { a += sm.neto.real[i]; b += sm.neto.ppto[i]; cr.push(Math.round(a)); cp.push(Math.round(b)); }
-    h += '<div class="card"><h2>Ahorro acumulado</h2><p class="sub">Lo que entra menos lo que sale (incluye traspasos a otras cuentas).</p>' +
-      '<div class="legend"><span><i style="background:var(--real)"></i>Real</span><span><i style="background:var(--ppto)"></i>Presupuesto</span></div>' +
-      '<div class="chart">' + lineChart(cr, cp, sm.hasta, 'Ahorro acumulado real frente a presupuesto') + '</div></div></div>';
+    for (var i = 0; i < 12; i++) { a += fc.neto.serie[i]; b += fc.neto.ppto[i]; cr.push(Math.round(a)); cp.push(Math.round(b)); }
+    h += '<div class="card"><h2>Ahorro acumulado</h2><p class="sub">Entradas menos salidas (incluye traspasos). La línea discontinua es la previsión hasta diciembre.</p>' +
+      '<div class="legend"><span><i style="background:var(--real)"></i>Real</span><span><i style="background:linear-gradient(90deg,var(--real) 0 40%,transparent 40% 60%,var(--real) 60%)"></i>Previsión</span><span><i style="background:var(--ppto)"></i>Presupuesto</span></div>' +
+      '<div class="chart">' + lineChart(cr, cp, sm.hasta, 'Ahorro acumulado real, previsto y presupuestado') + '</div></div></div>';
 
-    h += '<div class="card"><h2>Desviaciones por bloque y mes</h2><p class="sub">Rojo: peor que lo previsto (gastas más o ingresas menos). Azul: mejor. Gris: en línea.</p>' + heatmap(sm.bloques, sm.hasta) + '</div>';
+    h += '<div class="card"><h2>Desviaciones por bloque y mes</h2><p class="sub">Rojo: peor que lo previsto (gastáis más o ingresáis menos). Azul: mejor. Gris: en línea.</p>' + heatmap(sm.bloques, sm.hasta) + '</div>';
 
-    // tabla
+    // ---- tabla con previsión de cierre
     var order = { Ingreso: 0, Gasto: 1, Traspaso: 2 };
     var bl = sm.bloques.slice().sort(function (x, y) { return order[x.tipo] - order[y.tipo] || Math.abs(y.desvYTD) - Math.abs(x.desvYTD); });
     var filas = {}; sm.filas.forEach(function (f) { filas[f.tipologia] = f; });
-    h += '<div class="card"><h2>Detalle ' + (acum ? 'acumulado hasta ' + mesLabel(hasta) : 'de ' + mesLabel(hasta)) + '</h2><p class="sub">Toca un bloque para abrirlo y una partida para ver por qué se desvía.</p><div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Real</th><th>Ppto</th><th>Desv.</th><th></th></tr></thead><tbody>';
-    bl.forEach(function (b, bi) {
-      var r = sumR(b.real, d0, d1), p = sumR(b.ppto, d0, d1);
-      h += '<tr class="block" data-b="' + bi + '"><td>' + esc(b.bloque) + ' <span class="muted small">' + esc(b.tipo) + '</span></td><td class="num">' + eur(r) + '</td><td class="num">' + eur(p) + '</td><td class="num">' + eurS(r - p) + '</td><td>' + stChip(FB.status(b.tipo, r, p, umbrales())) + '</td></tr>';
-      b.lineas.map(function (t) { return filas[t]; }).sort(function (x, y) { return Math.abs(sumR(y.real, d0, d1) - sumR(y.ppto, d0, d1)) - Math.abs(sumR(x.real, d0, d1) - sumR(x.ppto, d0, d1)); })
+    h += '<div class="card"><h2>Detalle ' + (acum ? 'acumulado hasta ' + mesLabel(hasta) : 'de ' + mesLabel(hasta)) + ' y cierre previsto</h2><p class="sub">Toca un bloque para abrirlo y una partida para ver por qué se desvía y cómo se ha previsto.</p>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Real</th><th>Ppto</th><th>Desv.</th><th></th><th>Cierre prev.</th><th>Ppto año</th><th>Desv. cierre</th></tr></thead><tbody>';
+    bl.forEach(function (bq, bi) {
+      var r = sumR(bq.real, d0, d1), p = sumR(bq.ppto, d0, d1);
+      var bc = 0, bpa = 0;
+      bq.lineas.forEach(function (t) { var f = fcBy[t]; if (f) { bc += f.cierre; bpa += f.pptoAnual; } });
+      h += '<tr class="block" data-b="' + bi + '"><td>' + esc(bq.bloque) + ' <span class="muted small">' + esc(bq.tipo) + '</span></td><td class="num">' + eur(r) + '</td><td class="num">' + eur(p) + '</td><td class="num">' + eurS(r - p) + '</td><td>' + stChip(FB.status(bq.tipo, r, p, U)) + '</td>' +
+        '<td class="num">' + eur(bc) + '</td><td class="num">' + eur(bpa) + '</td><td class="num">' + eurS(bc - bpa) + '</td></tr>';
+      bq.lineas.map(function (t) { return filas[t]; }).sort(function (x, y) { return Math.abs(sumR(y.real, d0, d1) - sumR(y.ppto, d0, d1)) - Math.abs(sumR(x.real, d0, d1) - sumR(x.ppto, d0, d1)); })
         .forEach(function (f) {
-          var fr = sumR(f.real, d0, d1), fp = sumR(f.ppto, d0, d1);
-          if (!fr && !fp) return;
-          h += '<tr class="line" data-pb="' + bi + '" data-t="' + esc(f.tipologia) + '" hidden><td>' + esc(f.tipologia) + '</td><td class="num">' + eur(fr) + '</td><td class="num">' + eur(fp) + '</td><td class="num">' + eurS(fr - fp) + '</td><td>' + stChip(FB.status(f.tipo, fr, fp, umbrales())) + '</td></tr>';
+          var fr = sumR(f.real, d0, d1), fp = sumR(f.ppto, d0, d1), F = fcBy[f.tipologia] || { cierre: 0, pptoAnual: 0, metodo: '' };
+          if (!fr && !fp && !F.cierre && !F.pptoAnual) return;
+          h += '<tr class="line" data-pb="' + bi + '" data-t="' + esc(f.tipologia) + '" hidden><td>' + esc(f.tipologia) + '</td><td class="num">' + eur(fr) + '</td><td class="num">' + eur(fp) + '</td><td class="num">' + eurS(fr - fp) + '</td><td>' + stChip(FB.status(f.tipo, fr, fp, U)) + '</td>' +
+            '<td class="num" title="' + esc(F.detalle || '') + '">' + eur(F.cierre) + ' <span class="muted small">' + esc(METODO_TXT[F.metodo] || '') + '</span></td><td class="num">' + eur(F.pptoAnual) + '</td><td class="num">' + eurS(F.cierre - F.pptoAnual) + '</td></tr>';
         });
     });
     h += '</tbody></table></div></div>';
     v.innerHTML = h;
 
-    $$('.seg button', v).forEach(function (b) { b.onclick = function () { S.seg.modo = b.getAttribute('data-m'); render(); }; });
+    $$('.seg button', v).forEach(function (bt) { bt.onclick = function () { S.seg.modo = bt.getAttribute('data-m'); render(); }; });
     $('#seg-hasta').onchange = function () { S.seg.hasta = Number(this.value); render(); };
     if ($('#go-pend')) $('#go-pend').onclick = function () { go('movimientos', { filtro: 'pendientes', mes: 0 }); };
+    if ($('#ver-todas')) $('#ver-todas').onclick = function () { S.seg.verTodas = !S.seg.verTodas; render(); };
+    $$('button[data-movs]', v).forEach(function (bt) { bt.onclick = function () { go('movimientos', { filtro: 'todos', partida: bt.getAttribute('data-movs'), mes: Number(bt.getAttribute('data-mes')), q: '' }); }; });
     $$('tr.block', v).forEach(function (tr) {
       tr.onclick = function () { var bi = tr.getAttribute('data-b'); $$('tr[data-pb="' + bi + '"]', v).forEach(function (x) { x.hidden = !x.hidden; }); };
     });
-    $$('tr.line', v).forEach(function (tr) { tr.onclick = function () { openExplain(tr.getAttribute('data-t'), acum ? 1 : hasta, hasta); }; });
+    $$('tr.line', v).forEach(function (tr) { tr.onclick = function () { openExplain(tr.getAttribute('data-t'), acum ? 1 : hasta, hasta, fcBy[tr.getAttribute('data-t')]); }; });
   }
 
   // ------------------------------------------------------------ explicación (sheet)
@@ -305,59 +354,30 @@
   function closeSheet() { $('#sheet').style.display = 'none'; $('#sheet-bg').style.display = 'none'; hideTip(); }
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSheet(); });
 
-  function causesHtml(e) {
+  function causesHtml(e, collapsible) {
     var h = e.causas.length ? '<ul>' + e.causas.map(function (c) { return '<li>' + esc(c.texto) + '</li>'; }).join('') + '</ul>' : '<p class="muted small">Sin una causa clara: la desviación se reparte entre muchos movimientos.</p>';
     if (e.nota && e.nota.length) h += '<p class="small"><b>Vuestras notas:</b> ' + e.nota.map(esc).join(' · ') + '</p>';
     var com = e.comercios.filter(function (c) { return c.importe > 0; }).slice(0, 6);
     if (com.length) {
       var mx = com[0].importe;
-      h += '<div class="bars-mini" aria-label="Dónde se ha ido el dinero">' + com.map(function (c) {
+      var bars = '<div class="bars-mini" aria-label="Dónde se ha ido el dinero">' + com.map(function (c) {
         return '<div class="b"><span title="' + esc(c.comercio) + '">' + esc(c.comercio) + '</span><span><span class="bar' + (c.nuevo ? ' new' : '') + '" style="display:block;width:' + Math.max(3, 100 * c.importe / mx) + '%"></span></span><span class="num">' + eur(c.importe) + ' · ' + c.n + '×' + (c.nuevo ? ' · nuevo' : '') + '</span></div>';
       }).join('') + '</div>';
+      h += collapsible ? '<details style="margin-top:8px"><summary class="small">Dónde se ha ido el dinero</summary>' + bars + '</details>' : bars;
     }
     return h;
   }
-  function openExplain(t, desde, hasta) {
+  function openExplain(t, desde, hasta, F) {
     var e = FB.explainLine({ tipologia: t, year: S.year, desde: desde, hasta: hasta, ultimoMes: lastMonth(), partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, notas: true });
+    var prevHtml = F ? '<div class="banner" style="background:var(--surface-2);border-color:var(--border)"><b>Cierre previsto: ' + eur(F.cierre) + '</b> frente a ' + eur(F.pptoAnual) + ' presupuestados (' + eurS(F.cierre - F.pptoAnual) + '). ' +
+      '<span class="small">Cómo: ' + esc(F.detalle) + '.</span></div>' : '';
     openSheet('<div class="row spread"><h2>' + esc(t) + '</h2><button class="btn small ghost" data-close>Cerrar</button></div>' +
       '<p class="sub">' + (desde === hasta ? mesLabel(hasta) : mesLabel(desde) + ' – ' + mesLabel(hasta)) + ' ' + S.year + ' · ' + e.n + ' movimientos</p>' +
       '<div class="kpis" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="label">Real</div><div class="value num" style="font-size:18px">' + eur(e.real) + '</div></div>' +
       '<div class="kpi"><div class="label">Presupuesto</div><div class="value num" style="font-size:18px">' + eur(e.ppto) + '</div></div>' +
       '<div class="kpi"><div class="label">Desviación</div><div class="value num" style="font-size:18px">' + eurS(e.desv) + '</div></div></div>' +
-      '<div class="ins">' + causesHtml(e) + '</div><div class="row" style="margin-top:14px"><button class="btn" id="see-movs">Ver movimientos</button></div>',
+      prevHtml + '<div class="ins">' + causesHtml(e) + '</div><div class="row" style="margin-top:14px"><button class="btn" id="see-movs">Ver movimientos</button></div>',
       function (sh) { $('#see-movs', sh).onclick = function () { closeSheet(); go('movimientos', { filtro: 'todos', partida: t, mes: desde === hasta ? hasta : 0, q: '' }); }; });
-  }
-
-  // ------------------------------------------------------------ Insights
-  function viewInsights(v) {
-    var last = lastMonth();
-    var acum = S.ins.modo === 'acum';
-    var mes = S.ins.mes || last;
-    var desde = acum ? 1 : mes, hasta = acum ? last : mes;
-    var top = FB.topDeviations({ year: S.year, partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, desde: desde, hasta: hasta, umbrales: umbrales(), minimo: umbrales().minimo, limit: 10 });
-    var sm = summary(hasta);
-    var netR = sumR(sm.neto.real, desde - 1, hasta - 1), netP = sumR(sm.neto.ppto, desde - 1, hasta - 1);
-    var peor = top.filter(function (e) { return e.impacto > 0; }), mejor = top.filter(function (e) { return e.impacto < 0; });
-    var h = '<div class="row spread" style="margin-bottom:12px"><div class="seg" role="group" aria-label="Periodo"><button data-m="acum" aria-pressed="' + acum + '">Año hasta ' + mesLabel(last) + '</button><button data-m="mes" aria-pressed="' + !acum + '">Un mes</button></div>' +
-      (acum ? '' : '<select id="ins-mes">' + FB.MESES.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === mes ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>') + '</div>';
-    var dn = netR - netP;
-    h += '<div class="card"><h2>' + (dn >= 0 ? 'Vais ' + eur(dn) + ' mejor que el presupuesto' : 'Vais ' + eur(-dn) + ' peor que el presupuesto') + '</h2>' +
-      '<p class="sub">Ahorro real ' + eur(netR) + ' frente a ' + eur(netP) + ' previsto' + (acum ? ' de enero a ' + mesLabel(last) : ' en ' + mesLabel(mes)) + '. ' +
-      (peor.length ? 'Lo que más pesa en contra: ' + peor.slice(0, 3).map(function (e) { return esc(e.tipologia) + ' (' + eurS(e.impacto) + ')'; }).join(', ') + '.' : '') + '</p></div>';
-    if (!top.length) h += '<p class="empty">Ninguna partida se desvía más de ' + eur(umbrales().minimo) + ' en este periodo.</p>';
-    var card = function (e) {
-      var tipoTxt = e.tipo === 'Ingreso' ? (e.desv < 0 ? 'Ingresas menos' : 'Ingresas más') : (e.desv > 0 ? 'Gastas más' : 'Gastas menos');
-      return '<div class="card ins"><div class="row spread"><h3>' + esc(e.tipologia) + ' <span class="muted small">' + esc(e.bloque || '') + '</span></h3>' +
-        '<span class="st ' + (e.impacto > 0 ? 'alerta' : 'ok') + '">' + (e.impacto > 0 ? 'Te cuesta ' : 'Te ahorra ') + eur(Math.abs(e.impacto)) + '</span></div>' +
-        '<p class="sub num" style="margin-top:4px">' + tipoTxt + ': ' + eur(e.real) + ' real frente a ' + eur(e.ppto) + ' previsto · ' + e.n + ' movimientos</p>' +
-        causesHtml(e) + '<div class="row" style="margin-top:10px"><button class="btn small" data-t="' + esc(e.tipologia) + '">Ver movimientos</button></div></div>';
-    };
-    if (peor.length) h += '<h2 style="font-size:14px;margin:18px 2px 8px;color:var(--ink-2)">EN CONTRA</h2>' + peor.map(card).join('');
-    if (mejor.length) h += '<h2 style="font-size:14px;margin:18px 2px 8px;color:var(--ink-2)">A FAVOR</h2>' + mejor.map(card).join('');
-    v.innerHTML = h;
-    $$('.seg button', v).forEach(function (b) { b.onclick = function () { S.ins.modo = b.getAttribute('data-m'); render(); }; });
-    if ($('#ins-mes')) $('#ins-mes').onchange = function () { S.ins.mes = Number(this.value); render(); };
-    $$('button[data-t]', v).forEach(function (b) { b.onclick = function () { go('movimientos', { filtro: 'todos', partida: b.getAttribute('data-t'), mes: acum ? 0 : mes, q: '' }); }; });
   }
 
   // ------------------------------------------------------------ Movimientos
@@ -572,6 +592,14 @@
       '<label class="field">Ignorar desviaciones de menos de (€)<input type="number" id="cf-min" value="' + esc(c.minimoDesviacion) + '" style="width:90px"></label></div>' +
       '<label class="field" style="margin-top:10px">Usuarios permitidos (emails separados por comas; vacío = quien tenga la hoja compartida)<input type="text" id="cf-users" value="' + esc(c.usuarios) + '"></label>' +
       '<div class="row" style="margin-top:10px"><button class="btn primary" id="cf-save">Guardar ajustes</button><span class="small muted">Conectado como ' + esc(S.data.usuario || '—') + '</span></div></div>';
+    h += '<div class="card"><h2>La hoja de cálculo</h2><p class="sub">Todo se guarda en una hoja de Google con las mismas pestañas que vuestro Excel (Movimientos, Reglas_Categorizacion, Maestro_Tipologias, FC) y dos que escribe la app: Resumen (real, presupuesto y previsión) e Insights. ' +
+      'Podéis editarla a mano: cambiar la partida de un movimiento, añadir un gasto en efectivo como fila nueva, tocar reglas o presupuesto. La app lo respeta.</p>' +
+      '<div class="row">' + (S.data.hojaUrl ? '<a class="btn" href="' + esc(S.data.hojaUrl) + '" target="_blank" rel="noopener">Abrir la hoja</a>' : '') + '<button class="btn" id="cf-recalc">Recalcular resumen</button></div>' +
+      '<h3 style="font-size:14px;margin:16px 0 4px">Copia en Excel (.xlsx)</h3><p class="sub">Una copia de toda la hoja en un .xlsx de Drive, para abrirla con Excel. Es solo una foto: lo que se edite en ese .xlsx no vuelve a la app. ' +
+      'Si eliges vuestro BUDGET_HOME.xlsx como destino, su contenido se sustituye por completo (Power Query y tablas dinámicas incluidas).</p>' +
+      '<div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:200px">Fichero .xlsx de destino (vacío = se crea uno junto a la hoja)<input type="text" id="cf-xlsx" value="' + esc(c.excelCopia) + '"></label>' +
+      '<label class="check small"><input type="checkbox" id="cf-xauto"' + (c.excelAuto === 'si' ? ' checked' : '') + '> Actualizar cada día</label>' +
+      '<button class="btn" id="cf-export">Exportar ahora</button></div></div>';
     h += '<div class="card"><h2>Importar desde el Excel</h2><p class="sub">Trae partidas, reglas y presupuesto de BUDGET_HOME.xlsx (hojas Maestro_Tipologias, Reglas_Categorizacion y FC).</p>' +
       '<div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:200px">Enlace o ID del Excel en Drive<input type="text" id="im-file"></label>' +
       '<label class="field">Año del presupuesto<input type="number" id="im-year" value="' + S.year + '" style="width:100px"></label>' +
@@ -592,6 +620,14 @@
         });
       }).catch(fail);
     };
+    $('#cf-recalc').onclick = function () { busy(true); api('apiReclassify').then(function (r) { S.data.movimientos = r.movimientos; busy(false); toast('Resumen e insights de la hoja actualizados.'); render(); }, fail); };
+    $('#cf-export').onclick = function () {
+      busy(true);
+      api('apiSaveConfig', { excelCopia: $('#cf-xlsx').value.trim(), excelAuto: $('#cf-xauto').checked ? 'si' : 'no' })
+        .then(function () { return api('apiExportExcel'); })
+        .then(function (r) { return reload().then(function () { toast('Copia guardada: ' + r.nombre, 5000); }); }).catch(fail);
+    };
+    $('#cf-xauto').onchange = function () { api('apiSaveConfig', { excelAuto: this.checked ? 'si' : 'no' }).then(function (cfg) { S.data.config = cfg; toast('Guardado.'); }, fail); };
     $('#cf-trigger').onclick = function () { busy(true); api('apiInstallDailyTrigger').then(function (m) { busy(false); toast(m); }, fail); };
     $('#cf-save').onclick = function () {
       busy(true);
@@ -697,10 +733,11 @@
       $('#view').innerHTML = '<div class="banner err"><b>No se pudo cargar.</b> ' + esc(e.message || e) + '</div>';
     });
   }
-  $('#year').onchange = function () { S.year = Number(this.value); S.seg.hasta = null; S.ins.mes = null; S.pres.year = null; S.pres.draft = null; render(); };
+  $('#year').onchange = function () { S.year = Number(this.value); S.seg.hasta = null; S.pres.year = null; S.pres.draft = null; render(); };
   $('#refresh').onclick = reload;
   var h0 = (location.hash || '').slice(1);
   if (TABS.some(function (t) { return t[0] === h0; })) S.tab = h0;
+  else if (h0 === 'insights') S.tab = 'seguimiento';
   reload();
 })();
 </script>

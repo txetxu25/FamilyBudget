@@ -441,9 +441,9 @@ var FB = (function () {
     var validas = {};
     (partidas || []).forEach(function (p) { validas[p.tipologia] = p; });
     var stats = { regla: 0, manual: 0, propuesta: 0, pendiente: 0, conflictos: 0 };
-    var out = movs.map(function (m0) {
+    var out = detectManualEdits(movs).map(function (m0) {
       var m = Object.assign({}, m0);
-      if (m.estado === 'manual' && m.tipologia) { stats.manual++; return m; }
+      if (m.estado === 'manual' && m.tipologia) { m.asignada = m.tipologia; stats.manual++; return m; }
       var r = matchRule(m, prepared);
       m.conflicto = r.conflicto.map(function (c) { return c.patron + ' → ' + c.tipologia; }).join('; ');
       if (m.conflicto) stats.conflictos++;
@@ -467,7 +467,21 @@ var FB = (function () {
       }
       stats.pendiente++;
     });
+    out.forEach(function (m) { m.asignada = m.tipologia || ''; });
     return { movimientos: out, stats: stats };
+  }
+
+  /**
+   * Si alguien cambió la partida directamente en la hoja (columna CLASIFICACION),
+   * ya no coincide con la que asignó la app (columna oculta "asignada"): se trata como manual.
+   */
+  function detectManualEdits(movs) {
+    return movs.map(function (m) {
+      if (m.estado === 'manual' || m.asignada === undefined) return m;
+      var t = m.tipologia || '', a = m.asignada || '';
+      if (t && t !== a) return Object.assign({}, m, { estado: 'manual' });
+      return m;
+    });
   }
 
   // --------------------------------------------------------------- agregación
@@ -610,6 +624,92 @@ var FB = (function () {
     });
 
     return { year: year, hasta: hasta, filas: filas, bloques: listaBloques, totales: tot, neto: neto, clasificacion: clasif };
+  }
+
+  // ---------------------------------------------------------------- previsión
+
+  function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+
+  /**
+   * Extrapola cada partida hasta diciembre a partir de lo ya ocurrido.
+   * Métodos (por partida, el primero que aplique):
+   *  - 'estacional': hay ≥6 meses del año anterior → mes del año pasado × (ritmo de este año / ritmo del pasado).
+   *  - 'tendencia' : la partida se mueve casi todos los meses → presupuesto restante × (real / presupuesto de los
+   *                  últimos 3 meses); si no hay presupuesto, la mediana de los últimos 3 meses.
+   *  - 'presupuesto': gasto esporádico → lo que queda presupuestado.
+   * Las proporciones se acotan entre 0,5× y 2× para que un mes raro no dispare la previsión.
+   */
+  function forecast(opts) {
+    var s = summarize(opts);
+    var hasta = s.hasta;
+    var prev = realByLine(opts.movimientos || [], opts.partidas || [], Number(opts.year) - 1);
+    var Z = function () { return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; };
+    var filas = s.filas.map(function (f) {
+      var real = f.real, ppto = f.ppto, ly = prev[f.tipologia];
+      var rY = sum(real, 0, hasta - 1);
+      var activos = 0;
+      for (var i = 0; i < hasta; i++) if (Math.abs(real[i]) > 0.005) activos++;
+      var lyActivos = 0;
+      if (ly) for (var j = 0; j < 12; j++) if (Math.abs(ly[j]) > 0.005) lyActivos++;
+      var lyYTD = ly ? sum(ly, 0, hasta - 1) : 0;
+      var fc = Z(), metodo, detalle = '';
+      if (f.tipologia === SIN_GASTO || f.tipologia === SIN_INGRESO) {
+        // no se proyecta: lo que hoy está sin clasificar acabará en otras partidas, que ya tienen su previsión
+        metodo = 'sin-proyeccion'; detalle = 'No se proyecta: clasifica estos movimientos para afinar la previsión';
+      } else if (ly && lyActivos >= 6 && lyYTD > 0 && rY > 0) {
+        var ratio = clamp(rY / lyYTD, 0.5, 2);
+        for (var a = hasta; a < 12; a++) fc[a] = ly[a] * ratio;
+        metodo = 'estacional';
+        detalle = 'Mismos meses de ' + (Number(opts.year) - 1) + ' × ' + (Math.round(ratio * 100) / 100).toString().replace('.', ',');
+      } else if (hasta >= 3 && activos >= Math.max(3, 0.6 * hasta)) {
+        var desde3 = Math.max(0, hasta - 3);
+        var pRest = sum(ppto, hasta, 11);
+        var ratios = [];
+        for (var q = desde3; q < hasta; q++) if (ppto[q] > 0) ratios.push(real[q] / ppto[q]);
+        if (ratios.length >= 2 && pRest > 0) {
+          // mediana de real/presupuesto mes a mes: un cobro extra aislado no mueve la previsión
+          var k = clamp(median(ratios), 0.5, 2);
+          for (var b = hasta; b < 12; b++) fc[b] = ppto[b] * k;
+          detalle = 'Presupuesto restante × ' + (Math.round(k * 100) / 100).toString().replace('.', ',') + ' (ritmo de los últimos 3 meses)';
+        } else {
+          var med = median(real.slice(desde3, hasta));
+          for (var c = hasta; c < 12; c++) fc[c] = med;
+          detalle = 'Mediana de los últimos 3 meses (' + fmt(med) + '/mes)';
+        }
+        metodo = 'tendencia';
+      } else {
+        for (var d = hasta; d < 12; d++) fc[d] = ppto[d];
+        metodo = 'presupuesto';
+        detalle = 'Partida esporádica: se asume lo que queda presupuestado';
+      }
+      fc = fc.map(round2);
+      var cierre = round2(rY + sum(fc, hasta, 11));
+      var serie = real.map(function (v, i) { return i < hasta ? v : fc[i]; });
+      return {
+        tipologia: f.tipologia, tipo: f.tipo, bloque: f.bloque, real: real, ppto: ppto, prevision: fc, serie: serie,
+        metodo: metodo, detalle: detalle, realYTD: round2(rY), cierre: cierre, pptoAnual: f.pptoAnual,
+        desvCierre: round2(cierre - f.pptoAnual), estadoCierre: status(f.tipo, cierre, f.pptoAnual, opts.umbrales)
+      };
+    });
+    var tot = {};
+    TIPOS.forEach(function (t) { tot[t] = { serie: Z(), ppto: Z(), cierre: 0, pptoAnual: 0 }; });
+    filas.forEach(function (f) {
+      var T = tot[f.tipo] || tot.Gasto;
+      for (var i = 0; i < 12; i++) { T.serie[i] += f.serie[i]; T.ppto[i] += f.ppto[i]; }
+      T.cierre += f.cierre; T.pptoAnual += f.pptoAnual;
+    });
+    TIPOS.forEach(function (t) { tot[t].serie = tot[t].serie.map(round2); tot[t].ppto = tot[t].ppto.map(round2); tot[t].cierre = round2(tot[t].cierre); tot[t].pptoAnual = round2(tot[t].pptoAnual); });
+    var neto = { serie: Z(), ppto: Z() };
+    for (var n = 0; n < 12; n++) {
+      neto.serie[n] = round2(tot.Ingreso.serie[n] - tot.Gasto.serie[n] - tot.Traspaso.serie[n]);
+      neto.ppto[n] = round2(tot.Ingreso.ppto[n] - tot.Gasto.ppto[n] - tot.Traspaso.ppto[n]);
+    }
+    neto.cierre = round2(sum(neto.serie, 0, 11)); neto.pptoAnual = round2(sum(neto.ppto, 0, 11));
+    // partidas que más mueven el cierre respecto al presupuesto anual (impacto en el ahorro)
+    var palancas = filas.map(function (f) { return { tipologia: f.tipologia, tipo: f.tipo, desvCierre: f.desvCierre, impacto: f.tipo === 'Ingreso' ? -f.desvCierre : f.desvCierre, metodo: f.metodo }; })
+      .filter(function (p) { return Math.abs(p.desvCierre) >= 50; })
+      .sort(function (a, b) { return Math.abs(b.impacto) - Math.abs(a.impacto); });
+    return { year: s.year, hasta: hasta, filas: filas, totales: tot, neto: neto, palancas: palancas };
   }
 
   // ----------------------------------------------------------------- insights
@@ -871,7 +971,7 @@ var FB = (function () {
     var partidas = [], seen = {};
     var addPartida = function (t, bloque, tipo) {
       t = String(t || '').trim();
-      if (!t || seen[norm(t)]) return;
+      if (!t || seen[norm(t)] || /^SIN CLASIFICA/.test(norm(t))) return;
       seen[norm(t)] = t;
       tipo = /ingreso/i.test(tipo) ? 'Ingreso' : /traspaso/i.test(tipo) ? 'Traspaso' : 'Gasto';
       partidas.push({ tipologia: t, bloque: String(bloque || '').trim().toUpperCase() || 'OTROS', tipo: tipo });
@@ -892,7 +992,7 @@ var FB = (function () {
       var f = fc[j] || [];
       var mes = monthIndex(f[0]);
       var t = String(f[4] || '').trim();
-      if (!mes || !t) continue;
+      if (!mes || !t || /^SIN CLASIFICA/.test(norm(t))) continue;
       addPartida(t, f[5], f[1]);
       var imp = parseAmount(f[3]);
       if (isFinite(imp) && imp !== 0) presupuesto.push({ anio: Number(year), mes: mes, tipologia: canon(t), importe: round2(Math.abs(imp)), comentario: String(f[6] || '').trim() });
@@ -922,7 +1022,8 @@ var FB = (function () {
     prepareRules: prepareRules, matchRule: matchRule, merchantKey: merchantKey, suggestPattern: suggestPattern,
     tokens: tokens, buildSuggester: buildSuggester, suggest: suggest, classifyAll: classifyAll,
     realByLine: realByLine, budgetByLine: budgetByLine, lastMonthWithData: lastMonthWithData, status: status,
-    summarize: summarize, explainLine: explainLine, topDeviations: topDeviations,
+    summarize: summarize, forecast: forecast, detectManualEdits: detectManualEdits,
+    explainLine: explainLine, topDeviations: topDeviations,
     importFromBudgetWorkbook: importFromBudgetWorkbook, fmt: fmt, fmtSigned: fmtSigned
   };
 })();

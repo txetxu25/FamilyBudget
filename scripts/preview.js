@@ -12,7 +12,7 @@ let html = files['Index.html'].replace(/<\?!= include\('(\w+)'\); \?>/g, (_, n) 
   return files[n + '.html'];
 });
 const mock = `<script>
-window.__DATA__ = ${JSON.stringify(Object.assign({ usuario: 'demo@example.com', archivos: [], config: { carpetaExtractos: '', anioActivo: '2026', usuarios: '', umbralAmbar: '0.15', umbralRojo: '0.3', minimoDesviacion: '50' } }, data))};
+window.__DATA__ = ${JSON.stringify(Object.assign({ usuario: 'demo@example.com', archivos: [], hojaUrl: 'https://docs.google.com/spreadsheets/d/demo', config: { carpetaExtractos: '', anioActivo: '2026', usuarios: '', umbralAmbar: '0.15', umbralRojo: '0.3', minimoDesviacion: '50', excelCopia: '', excelAuto: 'no' } }, data))};
 window.__MOCK_API__ = function (fn, args) {
   var D = window.__DATA__;
   var reclass = function () { var c = FB.classifyAll(D.movimientos, D.reglas, D.partidas); D.movimientos = c.movimientos; return c; };
@@ -27,6 +27,7 @@ window.__MOCK_API__ = function (fn, args) {
     apiSaveConfig: function (v) { Object.assign(D.config, v); return D.config; },
     apiProcessFolder: function () { return { archivos: [], stats: {} }; },
     apiInstallDailyTrigger: function () { return 'Procesado diario activado (simulado).'; },
+    apiExportExcel: function () { return { id: 'x', nombre: 'Presupuesto familiar.xlsx' }; },
     apiImportExcel: function () { return { partidas: D.partidas.length, reglas: D.reglas.length, presupuesto: D.presupuesto.length }; }
   }[fn];
   return new Promise(function (ok, ko) { setTimeout(function () { try { ok(r.apply(null, args)); } catch (e) { ko(e); } }, 30); });
