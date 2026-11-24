@@ -20,7 +20,7 @@ Todo se guarda en una hoja de Google con **las mismas pestañas y columnas que e
 | `Movimientos` | FECHA, DESCRIPCION, TIPO MVTO, IMPORTE, MES, AÑO, CATEGORIA, CLASIFICACION + estado, nota, regla, saldo… | Sí: cambiar CLASIFICACION la fija a mano; una fila nueva sin ID (p. ej. un gasto en efectivo) se incorpora |
 | `Reglas_Categorizacion` | Categoria_regla, Tipología, Clasificación, Comentario_defecto + Signo, Importe_min/max, Meses | Sí |
 | `Maestro_Tipologias` | Partidas: Tipología, Clasificación (bloque), Tipo | Sí |
-| `FC` | Presupuesto en formato largo (una fila por partida y mes) con IMPORTE ESTIMADO, y el IMPORTE REAL que calcula la app | Sí, IMPORTE ESTIMADO y COMENTARIO |
+| `Presupuesto_AAAA` (fichero aparte) | El presupuesto de cada año vive en su propio fichero, en la carpeta de ese año: `10_Extractos/2026/Presupuesto_2026`. Pestaña `FC` en formato largo (una fila por partida y mes) con IMPORTE ESTIMADO y el IMPORTE REAL que calcula la app | Sí, IMPORTE ESTIMADO y COMENTARIO |
 | `Resumen` | Real, presupuesto y previsión por partida y mes, cierre del año | No: lo reescribe la app |
 | `Insights` | Desviaciones principales y sus causas, y el cierre previsto | No: lo reescribe la app |
 | `Config`, `Archivos` | Ajustes y ficheros procesados | Mejor desde la app |
@@ -28,6 +28,26 @@ Todo se guarda en una hoja de Google con **las mismas pestañas y columnas que e
 La app reescribe las pestañas completas. Haz tus cálculos propios en pestañas aparte, no en columnas añadidas a estas. En la hoja aparece un menú **Presupuesto** para procesar extractos, recalcular o exportar sin abrir la app.
 
 **Copia en Excel.** Desde *Ajustes* (o cada día, si lo activas) se vuelca una copia `.xlsx` de toda la hoja en Drive. Es una foto: lo que se edite en ese `.xlsx` no vuelve a la app. Google no puede editar un `.xlsx` celda a celda, solo sustituirlo entero. Por eso no se usa vuestro `BUDGET_HOME.xlsx` como almacén: perdería el Power Query, las tablas dinámicas y las fórmulas, y si se edita a la vez desde Excel una de las dos versiones se pierde.
+
+### Extractos y presupuesto por año
+
+```
+10_Extractos/
+  2025/   Movimientos_cuenta….xls          ← solo para ver y comparar (sin presupuesto)
+  2026/   Movimientos_cuenta_…_012026.xls …
+          Presupuesto_2026                  ← hoja de Google que lee y escribe la app
+  2027/   Presupuesto_2027                  ← la crea la app al guardar el presupuesto de 2027
+```
+
+- La app lee todos los años que haya en la carpeta. Si en Ajustes se pone por error la carpeta de un año (`2026`), sube a la carpeta padre.
+- Un año sin `Presupuesto_AAAA` se muestra igual: real, comparación con el año anterior y gráficos, sin desviaciones.
+- Los ficheros `Presupuesto_AAAA` no se procesan como extractos. También se lee un `Presupuesto_AAAA.xlsx`, pero solo para lectura; al guardar desde la app se crea la hoja de Google.
+- La primera vez, la pestaña `FC` del libro principal (si existe) se pasa a los ficheros anuales y se elimina.
+- Para que tu pareja pueda guardar presupuesto desde la app, comparte la carpeta de extractos con ella como **editora**.
+
+## Recibos que han subido
+
+La app busca cargos fijos (recibos, cuotas, suscripciones) cuyo importe ha subido en los últimos 12 meses y lo muestra en Seguimiento y en la pestaña `Insights`, con el impacto anual. Un cargo cuenta si el mismo comercio cobra en al menos 4 meses con importe estable (variación < 10 %). Por eso la luz, el gas o el supermercado no aparecen. Cada mes se toma el cargo principal de cada comercio, para que los copagos no tapen la cuota. Con "Visto" la alerta desaparece hasta la siguiente subida.
 
 ## Previsión de cierre
 

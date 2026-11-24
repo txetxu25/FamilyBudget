@@ -104,6 +104,9 @@
   .dbar > span { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
   .dbar .neg { background: var(--div-pos); } .dbar .pos { background: var(--div-neg); }
 
+  .alerta-recibo { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--grid); }
+  .alerta-recibo:first-of-type { border-top: 0; }
+
   /* cards */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
   .card h2 { font-size: 15px; margin: 0 0 2px; font-weight: 650; }
@@ -981,6 +984,70 @@ var FB = (function () {
     return { year: year, desde: desde, hasta: hasta, filas: filas, bloques: listaB, totales: tot };
   }
 
+  // ------------------------------------------------------ subidas en recibos
+
+  /**
+   * Detecta cargos recurrentes (recibos, cuotas, suscripciones) cuyo importe ha subido.
+   * Un cargo es recurrente si el mismo comercio cobra en ≥4 meses distintos con importe estable
+   * (variación < 10 %) antes del cambio; así se excluyen luz, gas o supermercado, que varían por consumo.
+   * Se busca el último cambio de nivel: los últimos cargos iguales entre sí (±1 %) frente a la mediana
+   * de los anteriores. Solo cuentan subidas ≥1,5 % y ≥1 €, que empezaron en los últimos `meses` (12 por defecto).
+   * Por cada comercio y mes se toma el cargo principal (el mayor): así los copagos o pequeños
+   * cargos del mismo comercio (p. ej. un seguro médico) no tapan la cuota.
+   * Devuelve [{clave, comercio, tipologia, antes, ahora, pct, desde, veces, confirmada, cargosAnio,
+   *            impactoAnual, haceUnAnio, pctAnual}], de mayor a menor impacto anual.
+   */
+  function detectPriceIncreases(movs, opts) {
+    opts = opts || {};
+    var gastos = (movs || []).filter(function (m) { return m.importe < 0 && m.fecha; });
+    if (!gastos.length) return [];
+    var ultima = gastos.reduce(function (mx, m) { return m.fecha > mx ? m.fecha : mx; }, '');
+    var dUlt = toDate(ultima);
+    var corte = ymd(new Date(dUlt.getFullYear(), dUlt.getMonth() - (opts.meses || 12), dUlt.getDate(), 12));
+    var haceAnio = ymd(new Date(dUlt.getFullYear() - 1, dUlt.getMonth(), dUlt.getDate(), 12));
+    var grupos = {};
+    gastos.forEach(function (m) { (grupos[merchantKey(m)] = grupos[merchantKey(m)] || []).push(m); });
+    var cv = function (a) {
+      if (!a.length) return 0;
+      var mu = a.reduce(function (x, y) { return x + y; }, 0) / a.length, v = 0;
+      a.forEach(function (x) { v += (x - mu) * (x - mu); });
+      return mu ? Math.sqrt(v / a.length) / mu : 0;
+    };
+    var out = [];
+    Object.keys(grupos).forEach(function (k) {
+      var principal = {};
+      grupos[k].forEach(function (m) {
+        var mes = m.fecha.slice(0, 7);
+        if (!principal[mes] || m.importe < principal[mes].importe) principal[mes] = m;
+      });
+      var g = chronoSort(Object.keys(principal).map(function (mes) { return principal[mes]; }));
+      if (g.length < 4) return;
+      var a = g.map(function (m) { return -m.importe; });
+      var n = a.length, nivel = a[n - 1];
+      var i = n - 2;
+      while (i >= 0 && Math.abs(a[i] - nivel) <= 0.01 * nivel) i--;
+      var s = i + 1;                       // primer cargo del nivel actual
+      if (s === 0) return;                  // nunca ha cambiado
+      var antes = a.slice(Math.max(0, s - 4), s);
+      if (antes.length < 2 || cv(antes) > 0.1) return;
+      var base = median(antes);
+      if (!(nivel >= base * 1.015 && nivel - base >= 1)) return;
+      if (g[s].fecha < corte) return;       // subida antigua: ya no es noticia
+      var cargosAnio = g.filter(function (m) { return m.fecha > haceAnio; }).length || 1;
+      var viejos = g.filter(function (m) { return m.fecha <= haceAnio; });
+      var haceUnAnio = viejos.length ? -viejos[viejos.length - 1].importe : null;
+      out.push({
+        clave: k + '|' + round2(nivel), comercio: k, tipologia: g[n - 1].tipologia || '',
+        antes: round2(base), ahora: round2(nivel), pct: (nivel - base) / base, desde: g[s].fecha,
+        veces: n - s, confirmada: n - s >= 2, cargosAnio: cargosAnio,
+        impactoAnual: round2((nivel - base) * cargosAnio),
+        haceUnAnio: haceUnAnio != null ? round2(haceUnAnio) : null,
+        pctAnual: haceUnAnio ? (nivel - haceUnAnio) / haceUnAnio : null
+      });
+    });
+    return out.sort(function (x, y) { return y.impactoAnual - x.impactoAnual; });
+  }
+
   // ---------------------------------------------------- asistente de presupuesto
 
   /**
@@ -1367,7 +1434,7 @@ var FB = (function () {
     tokens: tokens, buildSuggester: buildSuggester, suggest: suggest, classifyAll: classifyAll,
     realByLine: realByLine, budgetByLine: budgetByLine, lastMonthWithData: lastMonthWithData, status: status,
     summarize: summarize, forecast: forecast, detectManualEdits: detectManualEdits,
-    compareYears: compareYears, proposeBudget: proposeBudget,
+    compareYears: compareYears, proposeBudget: proposeBudget, detectPriceIncreases: detectPriceIncreases,
     explainLine: explainLine, topDeviations: topDeviations,
     importFromBudgetWorkbook: importFromBudgetWorkbook, fmt: fmt, fmtSigned: fmtSigned
   };
@@ -1719,6 +1786,21 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     if (peor.length > 3 || mejor.length > 2) h += '<div class="row" style="justify-content:center;margin:-4px 0 14px"><button class="btn small ghost" id="ver-todas">' + (S.seg.verTodas ? 'Ver menos' : 'Ver todas las desviaciones (' + top.length + ')') + '</button></div>';
     if (!top.length) h += '<p class="empty">Ninguna partida se desvía más de ' + eur(U.minimo) + ' en este periodo.</p>';
 
+    // ---- recibos que han subido
+    var vistas = [];
+    try { vistas = JSON.parse(S.data.config.alertasVistas || '[]'); } catch (e) { vistas = []; }
+    var subidas = FB.detectPriceIncreases(S.data.movimientos).filter(function (a) { return vistas.indexOf(a.clave) < 0; });
+    if (subidas.length) {
+      var totSub = subidas.reduce(function (x, a) { return x + a.impactoAnual; }, 0);
+      h += '<div class="card"><h2>Recibos que han subido</h2><p class="sub">Cargos fijos que ahora cobran más: unos ' + eur(totSub) + ' más al año entre todos. Merece la pena revisarlos o renegociarlos.</p>' +
+        subidas.map(function (a) {
+          return '<div class="alerta-recibo"><div><b>' + esc(a.comercio) + '</b> <span class="muted small">' + esc(a.tipologia || 'sin partida') + '</span>' +
+            '<div class="small num">' + eur(a.antes, 1) + ' → <b>' + eur(a.ahora, 1) + '</b> (+' + String(Math.round(a.pct * 1000) / 10).replace('.', ',') + ' %) desde el ' + a.desde.split('-').reverse().join('/') +
+            ' · <b>' + eurS(a.impactoAnual) + '/año</b>' + (a.confirmada ? '' : ' · <span class="muted">solo un recibo con el importe nuevo</span>') + '</div></div>' +
+            '<button class="btn small ghost" data-visto="' + esc(a.clave) + '">Visto</button></div>';
+        }).join('') + '</div>';
+    }
+
     // ---- gráficos
     h += '<div class="grid two"><div class="card"><h2>Gasto mensual</h2><p class="sub">Real y, en los meses que faltan, previsión. Toca una barra para ver el detalle.</p>' +
       '<div class="legend"><span><i style="background:var(--real)"></i>Real</span><span><i style="background:repeating-linear-gradient(135deg,var(--real) 0 2px,transparent 2px 4px)"></i>Previsión</span><span><i style="background:var(--ppto)"></i>Presupuesto</span></div>' +
@@ -1762,6 +1844,16 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     $('#seg-hasta').onchange = function () { S.seg.hasta = Number(this.value); render(); };
     if ($('#go-pend')) $('#go-pend').onclick = function () { go('movimientos', { filtro: 'pendientes', mes: 0 }); };
     if ($('#cmp-pend')) $('#cmp-pend').onclick = function () { S.year = S.year - 1; $('#year').value = String(S.year); S.seg.hasta = null; go('movimientos', { filtro: 'pendientes', mes: 0, partida: '', q: '' }); };
+    $$('button[data-visto]', v).forEach(function (bt) {
+      bt.onclick = function () {
+        var vs = [];
+        try { vs = JSON.parse(S.data.config.alertasVistas || '[]'); } catch (e) { vs = []; }
+        vs.push(bt.getAttribute('data-visto'));
+        S.data.config.alertasVistas = JSON.stringify(vs);
+        render();
+        api('apiSaveConfig', { alertasVistas: S.data.config.alertasVistas }).then(function (c) { S.data.config = c; }, fail);
+      };
+    });
     if ($('#ver-todas')) $('#ver-todas').onclick = function () { S.seg.verTodas = !S.seg.verTodas; render(); };
     $$('button[data-movs]', v).forEach(function (bt) { bt.onclick = function () { go('movimientos', { filtro: 'todos', partida: bt.getAttribute('data-movs'), mes: Number(bt.getAttribute('data-mes')), q: '' }); }; });
     $$('tr.block', v).forEach(function (tr) {

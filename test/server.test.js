@@ -3,6 +3,12 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadServer, grid } = require('./gas-mock.js');
 
+/** Libro de presupuesto de un año (fichero aparte en la carpeta del año) y su ubicación. */
+function budgetBook(ctx, year) {
+  const f = ctx.__files.find((x) => x.name === 'Presupuesto_' + year && x.mime === 'application/vnd.google-apps.spreadsheet');
+  return f ? { file: f, book: ctx.__spreadsheets[f.id], grid: ctx.__spreadsheets[f.id].getSheetByName('FC').getDataRange().getValues() } : null;
+}
+
 const serial = (y, m, d) => Math.round(Date.UTC(y, m - 1, d) / 86400000 + 25569);
 const HEAD = [['Movimientos de la cuenta ES00 0000 0000 0000 0000 4321', '', '', '', '', ''], ['Importes en euros', '', '', '', '', ''], ['Fecha', 'Fecha valor', 'Movimiento', 'Más datos', 'Importe', 'Saldo']];
 
@@ -74,8 +80,11 @@ test('flujo completo: importar Excel, procesar extractos, clasificar, informe', 
   assert.equal(row[h.indexOf('CATEGORIA')], 'DESPENSA');
   assert.equal(row[h.indexOf('MES')], 'febrero');
 
-  // FC conserva el formato largo y rellena IMPORTE REAL
-  const fc = grid(ctx, 'FC');
+  // el presupuesto vive en Extractos/2026/Presupuesto_2026 (formato largo de FC) con IMPORTE REAL relleno
+  assert.equal(grid(ctx, 'FC'), null, 'el libro principal ya no tiene pestaña FC');
+  const bb = budgetBook(ctx, 2026);
+  assert.equal(bb.file.folder, 'Extractos/2026');
+  const fc = bb.grid;
   const fh = fc[0];
   const febSup = fc.find((x) => x[fh.indexOf('FECHA')] === 'febrero' && x[fh.indexOf('TIPOLOGÍA')] === 'Supermercado');
   assert.equal(febSup[fh.indexOf('IMPORTE ESTIMADO')], 300);
@@ -129,14 +138,20 @@ test('clasificar desde la app con regla nueva, y respetar una edición hecha a m
   assert.equal(ctx.apiBootstrap().movimientos.filter((m) => m.concepto === 'Mercadillo en efectivo').length, 1, 'no se duplica al reescribir');
 });
 
-test('presupuesto editado en la app se guarda en FC y lo editado en FC se lee', () => {
+test('presupuesto editado en la app se guarda en su fichero anual y lo editado en ese fichero se lee', () => {
   const ctx = setupCtx();
-  ctx.apiSaveConfig({ anioActivo: '2026' });
+  assert.throws(() => ctx.apiSaveBudget(2026, [{ mes: 1, tipologia: 'Ocio', importe: 75 }]), /carpeta de extractos/);
+  ctx.apiSaveConfig({ anioActivo: '2026', carpetaExtractos: 'ROOTFOLDERID_ABCDEFGHIJKLMNOPQ' });
   ctx.apiImportExcel('XL', 2026, 'reemplazar');
   const b = ctx.apiSaveBudget(2026, [{ mes: 1, tipologia: 'Ocio', importe: 75 }, { mes: 2, tipologia: 'Supermercado', importe: 310 }]);
   assert.equal(b.length, 2);
-  const fc = grid(ctx, 'FC'), fh = fc[0];
-  const sh = ctx.__book.getSheetByName('FC');
+  // un año nuevo crea su carpeta y su fichero
+  ctx.apiSaveBudget(2027, [{ mes: 1, tipologia: 'Ocio', importe: 80 }]);
+  assert.equal(budgetBook(ctx, 2027).file.folder, 'Extractos/2027');
+  assert.equal(ctx.apiBootstrap().presupuesto.filter((x) => x.anio === 2027).length, 1);
+  const bb = budgetBook(ctx, 2026);
+  const fc = bb.grid, fh = fc[0];
+  const sh = bb.book.getSheetByName('FC');
   const i = fc.findIndex((x) => x[fh.indexOf('FECHA')] === 'marzo' && x[fh.indexOf('TIPOLOGÍA')] === 'Ocio');
   sh.set(i + 1, fh.indexOf('IMPORTE ESTIMADO') + 1, 90);
   const pres = ctx.apiBootstrap().presupuesto;
@@ -150,4 +165,38 @@ test('exportar copia .xlsx crea el fichero la primera vez y lo actualiza despué
   const b = ctx.apiExportExcel();
   assert.equal(b.id, a.id);
   assert.equal(ctx.__exported.filter((e) => e.update).length, 1);
+});
+
+test('si la carpeta configurada es la de un año, se leen todos los años (y no se procesa el presupuesto como extracto)', () => {
+  const files = [
+    { id: 'XL', name: 'BUDGET_HOME.xlsx', folder: 'Otros', sheets: EXCEL, mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+    { id: 'A25', name: 'cuenta_2025.xls', folder: 'Extractos/2025', grid: statement([[2025, 5, 2, 'SUPER UNO', 'x', -90]], 700) },
+    { id: 'A26', name: 'ene.xls', folder: 'Extractos/2026', grid: statement([[2026, 1, 2, 'SUPER UNO', 'x', -100]]) }
+  ];
+  const ctx = loadServer({ files, rootFolder: { id: 'ROOTFOLDERID_ABCDEFGHIJKLMNOPQ', name: 'Extractos' } });
+  ctx.setup();
+  ctx.apiSaveConfig({ carpetaExtractos: 'FOLDER:Extractos/2026', anioActivo: '2026' }); // apunta a la carpeta del año
+  ctx.apiImportExcel('XL', 2026, 'reemplazar');
+  const r = ctx.apiProcessFolder();
+  assert.equal(JSON.stringify(r.archivos.map((a) => a.nombre + ':' + a.resultado).sort()), JSON.stringify(['cuenta_2025.xls:ok', 'ene.xls:ok']));
+  assert.ok(ctx.apiBootstrap().movimientos.some((m) => m.fecha.startsWith('2025')), '2025 cargado aunque no tenga presupuesto');
+  assert.ok(budgetBook(ctx, 2026), 'el presupuesto 2026 está en su carpeta');
+  // el fichero de presupuesto (una hoja de Google en la carpeta 2026) no se toma por un extracto
+  assert.equal(ctx.apiProcessFolder().archivos.length, 0);
+});
+
+test('migra la pestaña FC antigua del libro principal a ficheros anuales y la elimina', () => {
+  const ctx = setupCtx();
+  ctx.apiSaveConfig({ anioActivo: '2026' });
+  // libro "antiguo": pestaña FC en el libro principal
+  const fcSheet = ctx.__book.insertSheet('FC');
+  [['FECHA', 'TIPO', 'IMPORTE REAL', 'IMPORTE ESTIMADO', 'TIPOLOGÍA', 'CLASIFICACIÓN', 'COMENTARIO', 'AÑO'],
+    ['enero', 'Gasto', '', 300, 'Supermercado', 'DESPENSA', 'x', 2026], ['marzo', 'Gasto', '', 50, 'Ocio', 'OCIO', '', 2025]]
+    .forEach((row, i) => row.forEach((v, j) => fcSheet.set(i + 1, j + 1, v)));
+  ctx.apiSaveConfig({ carpetaExtractos: 'ROOTFOLDERID_ABCDEFGHIJKLMNOPQ' });
+  const pres = ctx.apiBootstrap().presupuesto;
+  assert.equal(grid(ctx, 'FC'), null, 'pestaña FC eliminada del libro principal');
+  assert.ok(budgetBook(ctx, 2026) && budgetBook(ctx, 2025));
+  assert.ok(pres.some((b) => b.anio === 2026 && b.tipologia === 'Supermercado' && b.importe === 300));
+  assert.ok(pres.some((b) => b.anio === 2025 && b.tipologia === 'Ocio' && b.importe === 50));
 });

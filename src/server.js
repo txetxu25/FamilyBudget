@@ -45,7 +45,8 @@ var DEFAULT_CONFIG = {
   minimoDesviacion: '50',
   excelCopia: '',         // fichero .xlsx de Drive donde volcar una copia (vacío = se crea al exportar)
   excelAuto: 'no',        // 'si' = exportar la copia .xlsx tras cada procesado diario
-  asistente: ''           // parámetros y ajustes del asistente de presupuesto, por año (JSON)
+  asistente: '',          // parámetros y ajustes del asistente de presupuesto, por año (JSON)
+  alertasVistas: ''       // subidas de recibos ya revisadas (JSON con sus claves)
 };
 
 // ------------------------------------------------------------------ arranque
@@ -55,7 +56,7 @@ function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error('Abre el editor desde la hoja (Extensiones ▸ Apps Script) para que el script quede vinculado.');
   PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID', ss.getId());
-  Object.keys(HEADERS).forEach(function (name) { ensureSheet_(ss, name, true); }); // formatos siempre
+  Object.keys(HEADERS).forEach(function (name) { if (name !== T.FC) ensureSheet_(ss, name, true); }); // formatos siempre
   var cfg = readConfig_();
   var add = [];
   Object.keys(DEFAULT_CONFIG).forEach(function (k) { if (cfg[k] === undefined) add.push([k, DEFAULT_CONFIG[k]]); });
@@ -122,8 +123,8 @@ function ensureSheet_(ss, name, force) {
 // --------------------------------------------------------------- tablas
 
 /** Lee una pestaña como objetos {cabecera: valor}. Las fechas salen como 'YYYY-MM-DD'. */
-function readTable_(name) {
-  var sh = ss_().getSheetByName(name);
+function readTable_(name, book) {
+  var sh = (book || ss_()).getSheetByName(name);
   if (!sh) return [];
   var last = sh.getLastRow(), cols = sh.getLastColumn();
   if (last < 2) return [];
@@ -148,8 +149,8 @@ function readTable_(name) {
 }
 
 /** Reescribe la pestaña completa conservando las cabeceras (y columnas extra) que haya. */
-function writeTable_(name, rows) {
-  var ss = ss_();
+function writeTable_(name, rows, book) {
+  var ss = book || ss_();
   var sh = ensureSheet_(ss, name);
   var hdr = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(function (h) { return String(h).trim(); });
   var canon = {};
@@ -276,37 +277,141 @@ function writePartidas_(partidas) {
 
 // ---- Presupuesto (FC, formato largo del Excel: una fila por partida y mes)
 
-function readBudget_() {
-  var def = Number(config_().anioActivo);
+// El presupuesto de cada año vive en su propio fichero, dentro de la carpeta del año:
+//   <carpeta de extractos>/2026/Presupuesto_2026   (hoja de Google, pestaña FC, mismo formato que el Excel)
+// La app lo lee y lo escribe. Un .xlsx con ese nombre también se lee (solo lectura).
+var BUDGET_RE = /^presupuesto[ _-]?(\d{4})/i;
+var budgetCache_ = null;
+
+/** Carpeta raíz de extractos. Si la configurada se llama como un año (p. ej. "2026"), se usa su carpeta padre. */
+function extractsRoot_() {
+  var cfg = config_();
+  if (!cfg.carpetaExtractos) return null;
+  var f = DriveApp.getFolderById(extractId_(cfg.carpetaExtractos));
+  if (/^\d{4}$/.test(String(f.getName()).trim())) {
+    var ps = f.getParents();
+    if (ps.hasNext()) f = ps.next();
+  }
+  return f;
+}
+
+function yearFolder_(root, year, create) {
+  var it = root.getFolders();
+  while (it.hasNext()) { var f = it.next(); if (String(f.getName()).trim() === String(year)) return f; }
+  return create ? root.createFolder(String(year)) : null;
+}
+
+/** {año: {id, nombre, mime, google}} con los ficheros de presupuesto encontrados (prefiere hojas de Google). */
+function budgetFiles_() {
+  if (budgetCache_) return budgetCache_;
+  var out = {};
+  var root = extractsRoot_();
+  if (!root) return (budgetCache_ = out);
+  var years = root.getFolders();
+  while (years.hasNext()) {
+    var yf = years.next();
+    if (!/^\d{4}$/.test(String(yf.getName()).trim())) continue;
+    var files = yf.getFiles();
+    while (files.hasNext()) {
+      var f = files.next(), m = String(f.getName()).match(BUDGET_RE);
+      if (!m) continue;
+      var google = f.getMimeType() === 'application/vnd.google-apps.spreadsheet';
+      var y = Number(m[1]);
+      if (out[y] && out[y].google && !google) continue;
+      if (google || f.getMimeType() === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
+        out[y] = { id: f.getId(), nombre: f.getName(), mime: f.getMimeType(), google: google };
+      }
+    }
+  }
+  return (budgetCache_ = out);
+}
+
+function parseBudgetRows_(rows, defYear) {
   var out = [];
-  readTable_(T.FC).forEach(function (r) {
+  rows.forEach(function (r) {
     var mes = FB.monthIndex(r['FECHA']);
     var t = String(r['TIPOLOGÍA'] || '').trim();
     var imp = num_(r['IMPORTE ESTIMADO']);
     if (!mes || !t || !imp) return;
-    out.push({ anio: num_(r['AÑO']) || def, mes: mes, tipologia: t, importe: Math.abs(imp), comentario: String(r['COMENTARIO'] || '') });
+    out.push({ anio: num_(r['AÑO']) || defYear, mes: mes, tipologia: t, importe: Math.abs(imp), comentario: String(r['COMENTARIO'] || '') });
   });
   return out;
 }
 
-/** Escribe FC con la rejilla completa (partida × mes) de cada año con presupuesto, e IMPORTE REAL calculado. */
-function writeBudget_(budget, partidas, movs) {
+function readBudget_() {
+  migrateBudget_();
+  var files = budgetFiles_();
+  var out = [];
+  Object.keys(files).forEach(function (y) {
+    var f = files[y];
+    var book;
+    if (f.google) book = SpreadsheetApp.openById(f.id);
+    else {
+      var tmp = Drive.Files.create({ name: '[tmp] ' + f.nombre, mimeType: 'application/vnd.google-apps.spreadsheet' }, DriveApp.getFileById(f.id).getBlob());
+      try {
+        book = SpreadsheetApp.openById(tmp.id);
+        out = out.concat(parseBudgetRows_(readTable_(book.getSheetByName(T.FC) ? T.FC : book.getSheets()[0].getName(), book), Number(y)));
+      } finally { Drive.Files.remove(tmp.id); }
+      return;
+    }
+    var name = book.getSheetByName(T.FC) ? T.FC : book.getSheets()[0].getName();
+    out = out.concat(parseBudgetRows_(readTable_(name, book), Number(y)).map(function (b) { b.anio = Number(y); return b; }));
+  });
+  // sin carpeta configurada (o sin ficheros todavía): la pestaña FC antigua, si existe
+  if (!Object.keys(files).length && ss_().getSheetByName(T.FC)) out = parseBudgetRows_(readTable_(T.FC), Number(config_().anioActivo));
+  return out;
+}
+
+/**
+ * Pasa el presupuesto de la pestaña FC del libro principal a ficheros anuales (una sola vez),
+ * y después elimina esa pestaña para aligerar el libro.
+ */
+function migrateBudget_() {
+  var ss = ss_();
+  var sh = ss.getSheetByName(T.FC);
+  if (!sh || !extractsRoot_()) return;
+  var budget = parseBudgetRows_(readTable_(T.FC), Number(config_().anioActivo));
+  if (budget.length) {
+    var files = budgetFiles_();
+    var years = {};
+    budget.forEach(function (b) { years[b.anio] = 1; });
+    // no pisar un fichero anual que ya exista
+    var nuevos = budget.filter(function (b) { return !files[b.anio]; });
+    if (nuevos.length) writeBudget_(nuevos, null, null, { years: Object.keys(years).map(Number).filter(function (y) { return !files[y]; }) });
+  }
+  if (ss.getSheets().length > 1) ss.deleteSheet(sh);
+}
+
+/**
+ * Escribe el presupuesto en el fichero anual de cada año (rejilla completa partida × mes, con
+ * IMPORTE REAL calculado). opts.years limita qué años se escriben; por defecto, los que tienen
+ * presupuesto o fichero. Crea la carpeta del año y el fichero si no existen.
+ */
+function writeBudget_(budget, partidas, movs, opts) {
+  opts = opts || {};
+  var root = extractsRoot_();
+  if (!root) throw new Error('Configura la carpeta de extractos en Ajustes: el presupuesto de cada año se guarda en la carpeta de su año.');
   partidas = partidas || readPartidas_();
   movs = movs || readMovs_();
+  var files = budgetFiles_();
   var years = {};
-  budget.forEach(function (b) { years[b.anio] = 1; });
+  if (opts.years) opts.years.forEach(function (y) { years[y] = 1; });
+  else {
+    budget.forEach(function (b) { years[b.anio] = 1; });
+    Object.keys(files).forEach(function (y) { if (files[y].google) years[y] = 1; });
+  }
   var cell = {};
   budget.forEach(function (b) {
     var k = b.anio + '|' + b.mes + '|' + b.tipologia;
     if (cell[k]) { cell[k].importe += b.importe; if (b.comentario) cell[k].comentario = (cell[k].comentario ? cell[k].comentario + ' · ' : '') + b.comentario; }
     else cell[k] = { importe: b.importe, comentario: b.comentario || '' };
   });
-  var rows = [];
+  var pm = {}; partidas.forEach(function (p) { pm[p.tipologia] = p; });
   Object.keys(years).map(Number).sort().forEach(function (y) {
     var real = FB.realByLine(movs, partidas, y);
     var names = partidas.map(function (p) { return p.tipologia; });
     budget.forEach(function (b) { if (b.anio === y && names.indexOf(b.tipologia) < 0) names.push(b.tipologia); });
-    var pm = {}; partidas.forEach(function (p) { pm[p.tipologia] = p; });
+    var rows = [];
     for (var mes = 1; mes <= 12; mes++) {
       names.forEach(function (t) {
         var c = cell[y + '|' + mes + '|' + t] || { importe: 0, comentario: '' };
@@ -317,8 +422,19 @@ function writeBudget_(budget, partidas, movs) {
         });
       });
     }
+    var f = files[y];
+    var book;
+    if (f && f.google) book = SpreadsheetApp.openById(f.id);
+    else {
+      book = SpreadsheetApp.create('Presupuesto_' + y);
+      DriveApp.getFileById(book.getId()).moveTo(yearFolder_(root, y, true));
+      files[y] = { id: book.getId(), nombre: 'Presupuesto_' + y, mime: 'application/vnd.google-apps.spreadsheet', google: true };
+    }
+    var fresh = !book.getSheetByName(T.FC);
+    ensureSheet_(book, T.FC, fresh);
+    if (fresh) { var def = book.getSheets().filter(function (x) { return x.getName() !== T.FC; }); def.forEach(function (x) { if (x.getLastRow() === 0) book.deleteSheet(x); }); }
+    writeTable_(T.FC, rows, book);
   });
-  writeTable_(T.FC, rows);
 }
 
 // ---- Config y archivos
@@ -360,6 +476,7 @@ function user_() {
 }
 
 function checkAccess_() {
+  budgetCache_ = null; // cada llamada vuelve a mirar los ficheros de presupuesto en Drive
   var allowed = (config_().usuarios || '').split(/[,;\s]+/).filter(Boolean).map(function (e) { return e.toLowerCase(); });
   if (!allowed.length) return;
   var me = user_().toLowerCase();
@@ -378,7 +495,12 @@ function commit_(movs, opts) {
   var c = FB.classifyAll(movs, rules, partidas);
   writeMovs_(c.movimientos, partidas);
   var budget = opts.presupuesto || readBudget_();
-  writeBudget_(budget, partidas, c.movimientos);
+  if (opts.presupuesto && !extractsRoot_()) throw new Error('Configura la carpeta de extractos en Ajustes antes de guardar presupuesto: cada año se guarda en la carpeta de su año.');
+  if (extractsRoot_()) {
+    var files = budgetFiles_(), activo = Number(config_().anioActivo);
+    var years = opts.presupuesto ? null : (files[activo] && files[activo].google ? [activo] : []);
+    if (!years || years.length) writeBudget_(budget, partidas, c.movimientos, years ? { years: years } : {});
+  }
   writeReport_(c.movimientos, partidas, budget);
   return c;
 }
@@ -463,6 +585,17 @@ function writeReport_(movs, partidas, budget) {
     add('Enero – ' + FB.MESES[hasta - 1], 1, hasta);
     add(FB.MESES[hasta - 1].charAt(0).toUpperCase() + FB.MESES[hasta - 1].slice(1), hasta, hasta);
   }
+  var vistas = [];
+  try { vistas = JSON.parse(cfg.alertasVistas || '[]'); } catch (e) { vistas = []; }
+  var subidas = FB.detectPriceIncreases(movs).filter(function (a) { return vistas.indexOf(a.clave) < 0; });
+  if (subidas.length) {
+    out.push(['', '', '', '', '', '', '', '']);
+    subidas.forEach(function (a) {
+      out.push(['Recibo que ha subido', a.comercio, a.tipologia, a.ahora, a.antes, FB.round2(a.ahora - a.antes), -a.impactoAnual,
+        '• ' + FB.fmt(a.antes) + ' → ' + FB.fmt(a.ahora) + ' (+' + String(Math.round(a.pct * 1000) / 10).replace('.', ',') + ' %) desde el ' + a.desde.split('-').reverse().join('/') +
+        '. Unos ' + FB.fmt(a.impactoAnual) + ' más al año (' + a.cargosAnio + ' cargos).' + (a.confirmada ? '' : ' Solo un recibo con el importe nuevo: puede ser puntual.')]);
+    });
+  }
   out.push(['', '', '', '', '', '', '', '']);
   out.push(['Cierre previsto', 'Ahorro', '', fc.neto.cierre, fc.neto.pptoAnual, FB.round2(fc.neto.cierre - fc.neto.pptoAnual), FB.round2(fc.neto.cierre - fc.neto.pptoAnual),
     'Lo que más mueve el cierre: ' + fc.palancas.slice(0, 5).map(function (p) { return p.tipologia + ' (' + FB.fmtSigned(-p.impacto) + ')'; }).join(', ')]);
@@ -511,7 +644,7 @@ function apiProcessFolder() {
 function processFolder_() {
   var cfg = config_();
   if (!cfg.carpetaExtractos) throw new Error('Configura la carpeta de extractos en Ajustes.');
-  var root = DriveApp.getFolderById(extractId_(cfg.carpetaExtractos));
+  var root = extractsRoot_();
   var known = {};
   readArchivos_().forEach(function (a) { known[a.fileId] = a; });
   var files = [];
@@ -559,7 +692,7 @@ function collectFiles_(folder, path, out, depth) {
   var it = folder.getFiles();
   while (it.hasNext()) {
     var f = it.next();
-    if (STATEMENT_TYPES.indexOf(f.getMimeType()) >= 0) out.push({ file: f, path: path });
+    if (STATEMENT_TYPES.indexOf(f.getMimeType()) >= 0 && !BUDGET_RE.test(String(f.getName()))) out.push({ file: f, path: path });
   }
   if (depth >= 2) return;
   var sub = folder.getFolders();

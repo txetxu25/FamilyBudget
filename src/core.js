@@ -769,6 +769,70 @@ var FB = (function () {
     return { year: year, desde: desde, hasta: hasta, filas: filas, bloques: listaB, totales: tot };
   }
 
+  // ------------------------------------------------------ subidas en recibos
+
+  /**
+   * Detecta cargos recurrentes (recibos, cuotas, suscripciones) cuyo importe ha subido.
+   * Un cargo es recurrente si el mismo comercio cobra en ≥4 meses distintos con importe estable
+   * (variación < 10 %) antes del cambio; así se excluyen luz, gas o supermercado, que varían por consumo.
+   * Se busca el último cambio de nivel: los últimos cargos iguales entre sí (±1 %) frente a la mediana
+   * de los anteriores. Solo cuentan subidas ≥1,5 % y ≥1 €, que empezaron en los últimos `meses` (12 por defecto).
+   * Por cada comercio y mes se toma el cargo principal (el mayor): así los copagos o pequeños
+   * cargos del mismo comercio (p. ej. un seguro médico) no tapan la cuota.
+   * Devuelve [{clave, comercio, tipologia, antes, ahora, pct, desde, veces, confirmada, cargosAnio,
+   *            impactoAnual, haceUnAnio, pctAnual}], de mayor a menor impacto anual.
+   */
+  function detectPriceIncreases(movs, opts) {
+    opts = opts || {};
+    var gastos = (movs || []).filter(function (m) { return m.importe < 0 && m.fecha; });
+    if (!gastos.length) return [];
+    var ultima = gastos.reduce(function (mx, m) { return m.fecha > mx ? m.fecha : mx; }, '');
+    var dUlt = toDate(ultima);
+    var corte = ymd(new Date(dUlt.getFullYear(), dUlt.getMonth() - (opts.meses || 12), dUlt.getDate(), 12));
+    var haceAnio = ymd(new Date(dUlt.getFullYear() - 1, dUlt.getMonth(), dUlt.getDate(), 12));
+    var grupos = {};
+    gastos.forEach(function (m) { (grupos[merchantKey(m)] = grupos[merchantKey(m)] || []).push(m); });
+    var cv = function (a) {
+      if (!a.length) return 0;
+      var mu = a.reduce(function (x, y) { return x + y; }, 0) / a.length, v = 0;
+      a.forEach(function (x) { v += (x - mu) * (x - mu); });
+      return mu ? Math.sqrt(v / a.length) / mu : 0;
+    };
+    var out = [];
+    Object.keys(grupos).forEach(function (k) {
+      var principal = {};
+      grupos[k].forEach(function (m) {
+        var mes = m.fecha.slice(0, 7);
+        if (!principal[mes] || m.importe < principal[mes].importe) principal[mes] = m;
+      });
+      var g = chronoSort(Object.keys(principal).map(function (mes) { return principal[mes]; }));
+      if (g.length < 4) return;
+      var a = g.map(function (m) { return -m.importe; });
+      var n = a.length, nivel = a[n - 1];
+      var i = n - 2;
+      while (i >= 0 && Math.abs(a[i] - nivel) <= 0.01 * nivel) i--;
+      var s = i + 1;                       // primer cargo del nivel actual
+      if (s === 0) return;                  // nunca ha cambiado
+      var antes = a.slice(Math.max(0, s - 4), s);
+      if (antes.length < 2 || cv(antes) > 0.1) return;
+      var base = median(antes);
+      if (!(nivel >= base * 1.015 && nivel - base >= 1)) return;
+      if (g[s].fecha < corte) return;       // subida antigua: ya no es noticia
+      var cargosAnio = g.filter(function (m) { return m.fecha > haceAnio; }).length || 1;
+      var viejos = g.filter(function (m) { return m.fecha <= haceAnio; });
+      var haceUnAnio = viejos.length ? -viejos[viejos.length - 1].importe : null;
+      out.push({
+        clave: k + '|' + round2(nivel), comercio: k, tipologia: g[n - 1].tipologia || '',
+        antes: round2(base), ahora: round2(nivel), pct: (nivel - base) / base, desde: g[s].fecha,
+        veces: n - s, confirmada: n - s >= 2, cargosAnio: cargosAnio,
+        impactoAnual: round2((nivel - base) * cargosAnio),
+        haceUnAnio: haceUnAnio != null ? round2(haceUnAnio) : null,
+        pctAnual: haceUnAnio ? (nivel - haceUnAnio) / haceUnAnio : null
+      });
+    });
+    return out.sort(function (x, y) { return y.impactoAnual - x.impactoAnual; });
+  }
+
   // ---------------------------------------------------- asistente de presupuesto
 
   /**
@@ -1155,7 +1219,7 @@ var FB = (function () {
     tokens: tokens, buildSuggester: buildSuggester, suggest: suggest, classifyAll: classifyAll,
     realByLine: realByLine, budgetByLine: budgetByLine, lastMonthWithData: lastMonthWithData, status: status,
     summarize: summarize, forecast: forecast, detectManualEdits: detectManualEdits,
-    compareYears: compareYears, proposeBudget: proposeBudget,
+    compareYears: compareYears, proposeBudget: proposeBudget, detectPriceIncreases: detectPriceIncreases,
     explainLine: explainLine, topDeviations: topDeviations,
     importFromBudgetWorkbook: importFromBudgetWorkbook, fmt: fmt, fmtSigned: fmtSigned
   };

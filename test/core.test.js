@@ -370,3 +370,25 @@ test('proposeBudget: fijos sin inflación, variables con inflación, estacionale
   assert.match(r.notas['Ocio Familia'], /HOTEL MAR: ¿se repetirá\?/);
   assert.match(r.comentarios['Supermercado|3'], /Bebé \+50/);
 });
+
+test('detectPriceIncreases: detecta la subida de una cuota y no confunde copagos ni consumos variables', () => {
+  const movs = [];
+  for (let m = 1; m <= 12; m++) {
+    const f = '2025-' + String(m).padStart(2, '0');
+    movs.push(mov(f + '-02', 'SEGURO SALUD SA', m >= 10 ? -205.98 : -183.33, { detalle: 'Recibo', tipologia: 'Luz' }));
+    if (m % 3 === 0) movs.push(mov(f + '-02', 'SEGURO SALUD SA', -7, { detalle: 'Recibo' })); // copago
+    movs.push(mov(f + '-05', 'LUZCO', -(60 + (m % 4) * 25), { detalle: 'Recibo' }));         // varía por consumo
+    movs.push(mov(f + '-07', 'GIMNASIO', -40, { detalle: 'Recibo' }));                        // sin cambios
+  }
+  const r = FB.detectPriceIncreases(movs);
+  assert.equal(r.length, 1, JSON.stringify(r.map((x) => x.comercio)));
+  assert.equal(r[0].comercio, 'SEGURO SALUD SA');
+  assert.equal(r[0].antes, 183.33);
+  assert.equal(r[0].ahora, 205.98);
+  assert.equal(r[0].desde, '2025-10-02');
+  assert.ok(r[0].confirmada);
+  assert.equal(r[0].impactoAnual, Math.round((205.98 - 183.33) * 12 * 100) / 100);
+  // una subida que empezó hace más de 12 meses ya no se avisa
+  assert.equal(FB.detectPriceIncreases(movs.concat([mov("2026-12-02", "OTRO", -1)])).length, 0);
+  assert.equal(FB.detectPriceIncreases(movs, { meses: 1 }).length, 0);
+});

@@ -65,24 +65,51 @@ function loadServer(opts) {
   const files = opts.files || [];
   let tmpN = 0;
   const props = {};
+  const createdFolders = new Set();
+  const rootPath = opts.rootFolder ? opts.rootFolder.name : '';
+  const allFolderPaths = () => {
+    const set = new Set(createdFolders);
+    files.forEach((f) => { if (!f.folder) return; const parts = f.folder.split('/'); for (let i = 1; i <= parts.length; i++) set.add(parts.slice(0, i).join('/')); });
+    if (rootPath) set.add(rootPath);
+    return [...set];
+  };
+  const folderIdOf = (path) => (opts.rootFolder && path === rootPath ? opts.rootFolder.id : 'FOLDER:' + path);
   const fileObj = (f) => ({
     getId: () => f.id, getName: () => f.name, getMimeType: () => f.mime || 'application/vnd.ms-excel',
     getLastUpdated: () => new Date(f.modified || '2026-11-01T00:00:00Z'), getBlob: () => ({ __file: f }),
-    getParents: () => ({ hasNext: () => false })
+    getParents: () => { let done = !f.folder; return { hasNext: () => !done, next: () => { done = true; return folderObj(f.folder); } }; },
+    moveTo: (folder) => { f.folder = folder.__path; }
   });
-  const folderObj = (name) => ({
-    getName: () => name,
-    getFiles: () => { const list = files.filter((f) => f.folder === name); let i = 0; return { hasNext: () => i < list.length, next: () => fileObj(list[i++]) }; },
+  // carpeta como en Drive: getName() es solo el último tramo de la ruta
+  const folderObj = (path) => ({
+    __path: path,
+    getId: () => folderIdOf(path),
+    getName: () => path.split('/').pop(),
+    getFiles: () => { const list = files.filter((f) => f.folder === path); let i = 0; return { hasNext: () => i < list.length, next: () => fileObj(list[i++]) }; },
     getFolders: () => {
-      const subs = [...new Set(files.filter((f) => f.folder.startsWith(name + '/')).map((f) => f.folder.slice(name.length + 1).split('/')[0]))];
-      let i = 0; return { hasNext: () => i < subs.length, next: () => folderObj(name + '/' + subs[i++]) };
-    }
+      const subs = allFolderPaths().filter((p) => p.startsWith(path + '/') && !p.slice(path.length + 1).includes('/'));
+      let i = 0; return { hasNext: () => i < subs.length, next: () => folderObj(subs[i++]) };
+    },
+    getParents: () => { const parent = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : null; let done = !parent; return { hasNext: () => !done, next: () => { done = true; return folderObj(parent); } }; },
+    createFolder: (name) => { createdFolders.add(path + '/' + name); return folderObj(path + '/' + name); }
   });
+  const folderByAnyId = (id) => {
+    const p = allFolderPaths().find((x) => folderIdOf(x) === id);
+    if (!p) throw new Error('Carpeta no encontrada ' + id);
+    return folderObj(p);
+  };
   const exported = [];
   const ctx = {
     console,
     SpreadsheetApp: {
       getActiveSpreadsheet: () => book, getActive: () => book,
+      create: (name) => {
+        const id = 'SS' + (++tmpN);
+        const ss = new FakeSpreadsheet(id, name);
+        spreadsheets[id] = ss;
+        files.push({ id, name, folder: '', mime: 'application/vnd.google-apps.spreadsheet' });
+        return ss;
+      },
       openById: (id) => { if (!spreadsheets[id]) throw new Error('No existe ' + id); return spreadsheets[id]; },
       getUi: () => ({ createMenu: () => ({ addItem() { return this; }, addSeparator() { return this; }, addToUi() {} }) })
     },
@@ -95,7 +122,7 @@ function loadServer(opts) {
       parseCsv: (txt, sep) => txt.trim().split(/\r?\n/).map((l) => l.split(sep))
     },
     DriveApp: {
-      getFolderById: (id) => { if (!opts.rootFolder || id !== opts.rootFolder.id) throw new Error('Carpeta no encontrada ' + id); return folderObj(opts.rootFolder.name); },
+      getFolderById: (id) => folderByAnyId(id),
       getFileById: (id) => { const f = files.find((x) => x.id === id) || (id === 'SHEET1' ? { id, name: 'Presupuesto familiar', mime: 'application/vnd.google-apps.spreadsheet' } : null); if (!f) throw new Error('Fichero no encontrado ' + id); return fileObj(f); }
     },
     Drive: {
@@ -124,7 +151,7 @@ function loadServer(opts) {
   const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
   vm.runInContext(src('core.js').replace('if (typeof module', 'if (false && typeof module'), ctx, { filename: 'core.js' });
   vm.runInContext(src('server.js'), ctx, { filename: 'server.js' });
-  ctx.__book = book; ctx.__exported = exported;
+  ctx.__book = book; ctx.__exported = exported; ctx.__files = files; ctx.__spreadsheets = spreadsheets;
   return ctx;
 }
 
