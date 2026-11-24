@@ -89,6 +89,21 @@
     .dots i.on { width: 16px; border-radius: 3px; background: var(--accent); }
   }
 
+  /* bandeja deslizable */
+  .mov.swipeable { position: relative; touch-action: pan-y; transition: transform .18s ease-out, opacity .18s, height .22s, padding .22s; background: var(--page); }
+  .mov.swipeable::before { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; width: 160px; font-size: 13px; font-weight: 600; opacity: .5; }
+  .mov.drag-right::before { content: attr(data-acc); right: 100%; justify-content: flex-end; padding-right: 14px; color: var(--good-ink); }
+  .mov.drag-left::before { content: "Clasificar ›"; left: 100%; padding-left: 14px; color: var(--accent); }
+  .mov.armed::before { opacity: 1; }
+  .mov.gone { height: 0 !important; padding-top: 0; padding-bottom: 0; overflow: hidden; border: 0; }
+  main { overflow-x: clip; }
+  .toast-btn { margin-left: 12px; background: none; border: 0; color: var(--accent); font-weight: 700; cursor: pointer; padding: 0; }
+  .info { color: var(--accent); cursor: pointer; font-size: 13px; }
+  @media (max-width: 600px) { .dcol { display: none; } }
+  .dbar { position: relative; display: block; height: 8px; background: var(--surface-2); border-radius: 4px; }
+  .dbar > span { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .dbar .neg { background: var(--div-pos); } .dbar .pos { background: var(--div-neg); }
+
   /* cards */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
   .card h2 { font-size: 15px; margin: 0 0 2px; font-weight: 650; }
@@ -446,7 +461,7 @@ var FB = (function () {
       var p = norm(r.patron);
       var conds = (signo ? 1 : 0) + (min != null ? 1 : 0) + (max != null ? 1 : 0) + (meses.length ? 1 : 0);
       return {
-        idx: i, id: r.id || String(i), patron: p, tipologia: r.tipologia, comentario: r.comentario || '',
+        idx: i, id: r.id || String(i), patron: p, compacto: compact(p), tipologia: r.tipologia, comentario: r.comentario || '',
         signo: signo, min: min, max: max, meses: meses,
         activa: r.activa !== false && r.activa !== 'NO' && p !== '' && !!r.tipologia,
         // Más específica = más condiciones, luego patrón más largo, luego orden en la lista.
@@ -455,8 +470,14 @@ var FB = (function () {
     }).filter(function (r) { return r.activa; });
   }
 
+  /** Solo letras y números: "REPSOL ELECT.GAS" y "REPSOL ELECT. GAS" quedan iguales. */
+  function compact(s) { return s.replace(/[^A-Z0-9]/g, ''); }
+
   function ruleApplies(rule, m, text) {
-    if (text.indexOf(rule.patron) < 0) return false;
+    if (text.indexOf(rule.patron) < 0) {
+      // segunda oportunidad ignorando espacios y puntuación, solo con patrones largos (evita falsos positivos)
+      if (rule.compacto.length < 6 || compact(text).indexOf(rule.compacto) < 0) return false;
+    }
     if (rule.signo && rule.signo !== sentido(m)) return false;
     var a = Math.abs(m.importe);
     if (rule.min != null && a < rule.min) return false;
@@ -850,11 +871,18 @@ var FB = (function () {
       if (ly) for (var j = 0; j < 12; j++) if (Math.abs(ly[j]) > 0.005) lyActivos++;
       var lyYTD = ly ? sum(ly, 0, hasta - 1) : 0;
       var fc = Z(), metodo, detalle = '';
+      // mensual estable (nómina, hipoteca, cuotas): el calendario del año pasado no aporta y puede despistar
+      var vals = real.slice(0, hasta).filter(function (v) { return Math.abs(v) > 0.005; }).sort(function (x, y) { return x - y; });
+      var sinPico = vals.slice(0, Math.max(1, vals.length - 1));
+      var mu = sinPico.reduce(function (x, y) { return x + y; }, 0) / sinPico.length, va = 0;
+      sinPico.forEach(function (v) { va += (v - mu) * (v - mu); });
+      var estable = hasta >= 3 && activos >= 0.8 * hasta && mu > 0 && Math.sqrt(va / sinPico.length) / mu < 0.2;
       if (f.tipologia === SIN_GASTO || f.tipologia === SIN_INGRESO) {
         // no se proyecta: lo que hoy está sin clasificar acabará en otras partidas, que ya tienen su previsión
         metodo = 'sin-proyeccion'; detalle = 'No se proyecta: clasifica estos movimientos para afinar la previsión';
-      } else if (ly && lyActivos >= 6 && lyYTD > 0 && rY > 0) {
-        var ratio = clamp(rY / lyYTD, 0.5, 2);
+      } else if (!estable && ly && lyActivos >= 6 && lyYTD > 0 && rY > 0 && rY / lyYTD >= 0.67 && rY / lyYTD <= 1.5) {
+        // solo si el año pasado se parece al actual: si no, su calendario no es fiable (p. ej. mal clasificado)
+        var ratio = rY / lyYTD;
         for (var a = hasta; a < 12; a++) fc[a] = ly[a] * ratio;
         metodo = 'estacional';
         detalle = 'Mismos meses de ' + (Number(opts.year) - 1) + ' × ' + (Math.round(ratio * 100) / 100).toString().replace('.', ',');
@@ -907,6 +935,125 @@ var FB = (function () {
       .filter(function (p) { return Math.abs(p.desvCierre) >= 50; })
       .sort(function (a, b) { return Math.abs(b.impacto) - Math.abs(a.impacto); });
     return { year: s.year, hasta: hasta, filas: filas, totales: tot, neto: neto, palancas: palancas };
+  }
+
+  // ------------------------------------------------------- comparación interanual
+
+  /**
+   * Real del año frente al real del año anterior en el mismo periodo [desde, hasta], por partida y bloque.
+   * Devuelve null si el año anterior no tiene datos en ese periodo.
+   */
+  function compareYears(opts) {
+    var year = Number(opts.year), desde = opts.desde || 1, hasta = opts.hasta || lastMonthWithData(opts.movimientos || [], year) || 12;
+    var partidas = opts.partidas || [], pm = partidaMap(partidas);
+    var cur = realByLine(opts.movimientos || [], partidas, year), prev = realByLine(opts.movimientos || [], partidas, year - 1);
+    var mesesPrev = {};
+    (opts.movimientos || []).forEach(function (m) {
+      var y = Number(m.fecha.slice(0, 4)), mo = Number(m.fecha.slice(5, 7));
+      if (y === year - 1 && mo >= desde && mo <= hasta) mesesPrev[mo] = 1;
+    });
+    if (Object.keys(mesesPrev).length < Math.min(3, hasta - desde + 1)) return null;
+    var lines = {};
+    Object.keys(cur).forEach(function (k) { lines[k] = 1; });
+    Object.keys(prev).forEach(function (k) { lines[k] = 1; });
+    var filas = Object.keys(lines).map(function (t) {
+      var p = pm[t] || { bloque: 'SIN CLASIFICAR', tipo: t === SIN_INGRESO ? 'Ingreso' : 'Gasto' };
+      var a = round2(sum(cur[t] || [], desde - 1, hasta - 1)), b = round2(sum(prev[t] || [], desde - 1, hasta - 1));
+      return { tipologia: t, bloque: p.bloque, tipo: p.tipo, actual: a, anterior: b, dif: round2(a - b), pct: b ? (a - b) / Math.abs(b) : null,
+        serieActual: cur[t] || [0,0,0,0,0,0,0,0,0,0,0,0], serieAnterior: prev[t] || [0,0,0,0,0,0,0,0,0,0,0,0] };
+    }).filter(function (f) { return f.actual || f.anterior; });
+    var bloques = {};
+    filas.forEach(function (f) {
+      var k = f.tipo + '|' + f.bloque;
+      var b = bloques[k] = bloques[k] || { bloque: f.bloque, tipo: f.tipo, actual: 0, anterior: 0, lineas: [] };
+      b.actual += f.actual; b.anterior += f.anterior; b.lineas.push(f);
+    });
+    var listaB = Object.keys(bloques).map(function (k) {
+      var b = bloques[k]; b.actual = round2(b.actual); b.anterior = round2(b.anterior); b.dif = round2(b.actual - b.anterior);
+      b.pct = b.anterior ? b.dif / Math.abs(b.anterior) : null;
+      b.lineas.sort(function (x, y) { return Math.abs(y.dif) - Math.abs(x.dif); });
+      return b;
+    });
+    var tot = {};
+    TIPOS.forEach(function (t) { tot[t] = { actual: 0, anterior: 0 }; });
+    filas.forEach(function (f) { var T = tot[f.tipo] || tot.Gasto; T.actual += f.actual; T.anterior += f.anterior; });
+    TIPOS.forEach(function (t) { tot[t].actual = round2(tot[t].actual); tot[t].anterior = round2(tot[t].anterior); tot[t].dif = round2(tot[t].actual - tot[t].anterior); });
+    return { year: year, desde: desde, hasta: hasta, filas: filas, bloques: listaB, totales: tot };
+  }
+
+  // ---------------------------------------------------- asistente de presupuesto
+
+  /**
+   * Propone el presupuesto de `year` a partir del año anterior completado con su previsión de cierre.
+   *  - Partidas que se mueven casi todos los meses y sin estacionalidad: importe plano = mediana de los
+   *    últimos 6 meses (quita picos puntuales).
+   *  - Partidas estacionales o esporádicas: se conserva el mes a mes del año anterior.
+   *  - Se aplica inflación a gastos y la subida prevista a ingresos.
+   *  - Después, los ajustes (cambios de vida que ya conocéis): {concepto, tipologia, desde, hasta, importe}
+   *    suman `importe` en cada mes del rango (negativo para quitar).
+   * Lo sin clasificar no se presupuesta. Devuelve {celdas: {tipologia: [12]}, notas: {tipologia: texto}, comentarios}.
+   */
+  function proposeBudget(opts) {
+    var year = Number(opts.year), base = year - 1;
+    var infl = Number(opts.inflacion) || 0, sub = Number(opts.subidaIngresos) || 0;
+    var fc = forecast({ year: base, partidas: opts.partidas, movimientos: opts.movimientos, presupuesto: opts.presupuesto, hasta: opts.hastaBase });
+    var celdas = {}, notas = {}, comentarios = {};
+    var real = fc.hasta < 12 ? ' (real hasta ' + MESES[fc.hasta - 1] + ' y previsión después)' : '';
+    fc.filas.forEach(function (f) {
+      if (f.tipologia === SIN_GASTO || f.tipologia === SIN_INGRESO) return;
+      var serie = f.serie.map(function (v) { return Math.max(0, v); });
+      var total = sum(serie, 0, 11);
+      if (!total) return;
+      var activos = serie.filter(function (v) { return v > 0.5; }).length;
+      var media = total / 12, sd = 0;
+      serie.forEach(function (v) { sd += (v - media) * (v - media); });
+      var cv = media ? Math.sqrt(sd / 12) / media : 0;
+      // importes fijos de contrato (hipoteca, comunidad, cuotas): no se les aplica inflación
+      var act = serie.filter(function (v) { return v > 0.5; });
+      var mAct = act.reduce(function (x, y) { return x + y; }, 0) / (act.length || 1), vAct = 0;
+      act.forEach(function (v) { vAct += (v - mAct) * (v - mAct); });
+      var fijo = act.length >= 10 && mAct > 0 && Math.sqrt(vAct / act.length) / mAct < 0.05;
+      var k = f.tipo === 'Ingreso' ? 1 + sub : (fijo ? 1 : 1 + infl);
+      var out;
+      if (activos >= 10 && cv < 0.35) {
+        var med = median(serie.slice(6));
+        out = serie.map(function () { return med * k; });
+        notas[f.tipologia] = 'Mediana de jul–dic de ' + base + real + (k !== 1 ? ' × ' + String(Math.round(k * 1000) / 1000).replace('.', ',') : '');
+      } else {
+        out = serie.map(function (v) { return v * k; });
+        notas[f.tipologia] = 'Mismo reparto mensual que ' + base + real + (k !== 1 ? ' × ' + String(Math.round(k * 1000) / 1000).replace('.', ',') : '');
+      }
+      if (fijo && f.tipo !== 'Ingreso' && infl) notas[f.tipologia] += ' · importe fijo: sin inflación';
+      // gasto puntual grande en el año base: avisar para que se decida si se repite
+      var pm2 = partidaMap(opts.partidas);
+      // agrupado por comercio: un viaje pagado en varios cargos cuenta como uno
+      var porCom = {};
+      (opts.movimientos || []).forEach(function (m) {
+        if (Number(m.fecha.slice(0, 4)) !== base || m.tipologia !== f.tipologia) return;
+        var key = merchantKey(m);
+        porCom[key] = (porCom[key] || 0) + signedForPartida(m, pm2[f.tipologia]);
+      });
+      var top = null;
+      Object.keys(porCom).forEach(function (key) { if (!top || porCom[key] > top.v) top = { v: porCom[key], k: key }; });
+      if (top && activos < 10 && top.v >= Math.max(300, 0.4 * total)) {
+        notas[f.tipologia] += ' · ' + fmt(top.v) + ' son de ' + top.k + ': ¿se repetirá?';
+      }
+      celdas[f.tipologia] = out;
+    });
+    (opts.ajustes || []).forEach(function (a) {
+      var t = a.tipologia, imp = Number(a.importe) || 0;
+      if (!t || !imp) return;
+      var d = Math.max(1, Number(a.desde) || 1), h = Math.min(12, Number(a.hasta) || 12);
+      var row = celdas[t] = celdas[t] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+      for (var i = d; i <= h; i++) {
+        row[i - 1] += imp;
+        var key = t + '|' + i;
+        comentarios[key] = (comentarios[key] ? comentarios[key] + ' · ' : '') + (a.concepto || 'Ajuste') + ' ' + (imp > 0 ? '+' : '') + Math.round(imp);
+      }
+      notas[t] = (notas[t] ? notas[t] + '. ' : '') + 'Ajuste: ' + (a.concepto || '') + ' (' + (imp > 0 ? '+' : '') + Math.round(imp) + ' €/mes, ' + MESES_CORTO[d - 1] + '–' + MESES_CORTO[h - 1] + ')';
+    });
+    Object.keys(celdas).forEach(function (t) { celdas[t] = celdas[t].map(function (v) { return Math.max(0, Math.round(v)); }); });
+    return { year: year, base: base, hastaBase: fc.hasta, celdas: celdas, notas: notas, comentarios: comentarios };
   }
 
   // ----------------------------------------------------------------- insights
@@ -1220,6 +1367,7 @@ var FB = (function () {
     tokens: tokens, buildSuggester: buildSuggester, suggest: suggest, classifyAll: classifyAll,
     realByLine: realByLine, budgetByLine: budgetByLine, lastMonthWithData: lastMonthWithData, status: status,
     summarize: summarize, forecast: forecast, detectManualEdits: detectManualEdits,
+    compareYears: compareYears, proposeBudget: proposeBudget,
     explainLine: explainLine, topDeviations: topDeviations,
     importFromBudgetWorkbook: importFromBudgetWorkbook, fmt: fmt, fmtSigned: fmtSigned
   };
@@ -1267,8 +1415,13 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     var c = S.data.config;
     return { ambar: Number(c.umbralAmbar) || 0.15, rojo: Number(c.umbralRojo) || 0.3, minimo: Number(c.minimoDesviacion) || 50 };
   }
-  function toast(msg, ms) {
+  function toast(msg, ms, action) {
     var t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+    if (action) {
+      var b = document.createElement('button'); b.className = 'toast-btn'; b.textContent = action.label;
+      b.onclick = function () { t.style.display = 'none'; action.fn(); };
+      t.appendChild(b);
+    }
     clearTimeout(toast._t); toast._t = setTimeout(function () { t.style.display = 'none'; }, ms || 3200);
   }
   function busy(on) { document.body.classList.toggle('loading', !!on); }
@@ -1478,7 +1631,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       x0 = null;
       if (e.touches.length !== 1 || $('#sheet').style.display === 'block') return;
       var el = e.target;
-      if (el.closest && el.closest('input, select, textarea, nav.tabs, header.top')) return;
+      if (el.closest && el.closest('input, select, textarea, nav.tabs, header.top, .mov.swipeable')) return;
       if (scrollsSideways(el)) return;
       x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
     }, { passive: true });
@@ -1576,6 +1729,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       '<div class="legend"><span><i style="background:var(--real)"></i>Real</span><span><i style="background:linear-gradient(90deg,var(--real) 0 40%,transparent 40% 60%,var(--real) 60%)"></i>Previsión</span><span><i style="background:var(--ppto)"></i>Presupuesto</span></div>' +
       '<div class="chart">' + lineChart(cr, cp, sm.hasta, 'Ahorro acumulado real, previsto y presupuestado') + '</div></div></div>';
 
+    // ---- frente al año anterior
+    var cmp = FB.compareYears({ year: S.year, partidas: S.data.partidas, movimientos: S.data.movimientos, desde: acum ? 1 : hasta, hasta: hasta });
+    if (cmp) h += interanualHtml(cmp, periodo);
+
     h += '<div class="card"><h2>Desviaciones por bloque y mes</h2><p class="sub">Rojo: peor que lo previsto (gastáis más o ingresáis menos). Azul: mejor. Gris: en línea.</p>' + heatmap(sm.bloques, sm.hasta) + '</div>';
 
     // ---- tabla con previsión de cierre
@@ -1604,12 +1761,38 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     $$('.seg button', v).forEach(function (bt) { bt.onclick = function () { S.seg.modo = bt.getAttribute('data-m'); render(); }; });
     $('#seg-hasta').onchange = function () { S.seg.hasta = Number(this.value); render(); };
     if ($('#go-pend')) $('#go-pend').onclick = function () { go('movimientos', { filtro: 'pendientes', mes: 0 }); };
+    if ($('#cmp-pend')) $('#cmp-pend').onclick = function () { S.year = S.year - 1; $('#year').value = String(S.year); S.seg.hasta = null; go('movimientos', { filtro: 'pendientes', mes: 0, partida: '', q: '' }); };
     if ($('#ver-todas')) $('#ver-todas').onclick = function () { S.seg.verTodas = !S.seg.verTodas; render(); };
     $$('button[data-movs]', v).forEach(function (bt) { bt.onclick = function () { go('movimientos', { filtro: 'todos', partida: bt.getAttribute('data-movs'), mes: Number(bt.getAttribute('data-mes')), q: '' }); }; });
     $$('tr.block', v).forEach(function (tr) {
       tr.onclick = function () { var bi = tr.getAttribute('data-b'); $$('tr[data-pb="' + bi + '"]', v).forEach(function (x) { x.hidden = !x.hidden; }); };
     });
     $$('tr.line', v).forEach(function (tr) { tr.onclick = function () { openExplain(tr.getAttribute('data-t'), acum ? 1 : hasta, hasta, fcBy[tr.getAttribute('data-t')]); }; });
+  }
+
+  function interanualHtml(cmp, periodo) {
+    var y0 = cmp.year - 1;
+    var sinAnt = cmp.filas.filter(function (f) { return f.tipologia === FB.SIN_GASTO; }).reduce(function (s, f) { return s + f.anterior; }, 0);
+    var aviso = cmp.totales.Gasto.anterior && sinAnt > 0.15 * cmp.totales.Gasto.anterior;
+    var order = { Ingreso: 0, Gasto: 1, Traspaso: 2 };
+    var bl = cmp.bloques.filter(function (b) { return b.bloque !== 'SIN CLASIFICAR'; })
+      .sort(function (a, b) { return order[a.tipo] - order[b.tipo] || Math.abs(b.dif) - Math.abs(a.dif); });
+    var maxAbs = Math.max.apply(null, bl.map(function (b) { return Math.abs(b.dif); }).concat([1]));
+    var bar = function (b) {
+      var bad = b.tipo === 'Ingreso' ? -b.dif : b.dif, w = Math.round(48 * Math.abs(b.dif) / maxAbs);
+      return '<span class="dbar"><span class="' + (bad > 0 ? 'neg' : 'pos') + '" style="width:' + w + '%;' + (b.dif >= 0 ? 'left:50%' : 'right:50%') + '"></span></span>';
+    };
+    var g = cmp.totales.Gasto, i = cmp.totales.Ingreso;
+    var h = '<div class="card"><h2>Frente a ' + y0 + ' (' + periodo + ')</h2>' +
+      '<p class="sub">Gasto ' + eur(g.actual) + ' frente a ' + eur(g.anterior) + ' (' + eurS(g.dif) + ') · ingresos ' + eur(i.actual) + ' frente a ' + eur(i.anterior) + ' (' + eurS(i.dif) + ').</p>';
+    if (aviso) h += '<div class="banner" id="cmp-pend" style="cursor:pointer"><b>En ' + y0 + ' hay ' + eur(sinAnt) + ' de gasto sin clasificar</b>, así que esta comparación aún no es fiable. Clasificar ' + y0 + ' →</div>';
+    h += '<div class="tbl-wrap"><table><thead><tr><th>Bloque</th><th>' + cmp.year + '</th><th>' + y0 + '</th><th>Dif.</th><th class="dcol" style="min-width:110px">Rojo: peor · azul: mejor</th></tr></thead><tbody>';
+    bl.forEach(function (b) {
+      var top = b.lineas.filter(function (l) { return Math.abs(l.dif) >= 50; }).slice(0, 2).map(function (l) { return l.tipologia + ' ' + eurS(l.dif); }).join(' · ');
+      h += '<tr><td>' + esc(b.bloque) + ' <span class="muted small">' + esc(b.tipo) + '</span>' + (top ? '<div class="muted small">' + esc(top) + '</div>' : '') + '</td><td class="num">' + eur(b.actual) + '</td><td class="num">' + eur(b.anterior) + '</td><td class="num">' + eurS(b.dif) +
+        (b.pct != null && Math.abs(b.pct) < 10 ? ' <span class="muted small">' + (b.pct > 0 ? '+' : '') + Math.round(100 * b.pct) + '%</span>' : '') + '</td><td class="dcol">' + bar(b) + '</td></tr>';
+    });
+    return h + '</tbody></table></div></div>';
   }
 
   // ------------------------------------------------------------ explicación (sheet)
@@ -1639,6 +1822,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
   }
   function openExplain(t, desde, hasta, F) {
     var e = FB.explainLine({ tipologia: t, year: S.year, desde: desde, hasta: hasta, ultimoMes: lastMonth(), partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, notas: true });
+    var cmpE = FB.compareYears({ year: S.year, partidas: S.data.partidas, movimientos: S.data.movimientos, desde: desde, hasta: hasta });
+    var fAnt = cmpE && cmpE.filas.filter(function (f) { return f.tipologia === t; })[0];
+    var antHtml = fAnt ? '<p class="small">En ' + (S.year - 1) + ', mismo periodo: <b>' + eur(fAnt.anterior) + '</b> (' + eurS(fAnt.dif) + ' este año).</p>' : '';
     var prevHtml = F ? '<div class="banner" style="background:var(--surface-2);border-color:var(--border)"><b>Cierre previsto: ' + eur(F.cierre) + '</b> frente a ' + eur(F.pptoAnual) + ' presupuestados (' + eurS(F.cierre - F.pptoAnual) + '). ' +
       '<span class="small">Cómo: ' + esc(F.detalle) + '.</span></div>' : '';
     openSheet('<div class="row spread"><h2>' + esc(t) + '</h2><button class="btn small ghost" data-close>Cerrar</button></div>' +
@@ -1646,7 +1832,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       '<div class="kpis" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="label">Real</div><div class="value num" style="font-size:18px">' + eur(e.real) + '</div></div>' +
       '<div class="kpi"><div class="label">Presupuesto</div><div class="value num" style="font-size:18px">' + eur(e.ppto) + '</div></div>' +
       '<div class="kpi"><div class="label">Desviación</div><div class="value num" style="font-size:18px">' + eurS(e.desv) + '</div></div></div>' +
-      prevHtml + '<div class="ins">' + causesHtml(e) + '</div><div class="row" style="margin-top:14px"><button class="btn" id="see-movs">Ver movimientos</button></div>',
+      prevHtml + antHtml + '<div class="ins">' + causesHtml(e) + '</div><div class="row" style="margin-top:14px"><button class="btn" id="see-movs">Ver movimientos</button></div>',
       function (sh) { $('#see-movs', sh).onclick = function () { closeSheet(); go('movimientos', { filtro: 'todos', partida: t, mes: desde === hasta ? hasta : 0, q: '' }); }; });
   }
 
@@ -1716,13 +1902,84 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     qi.oninput = function () { clearTimeout(qi._t); qi._t = setTimeout(function () { S.mov.q = qi.value; render(); var n = $('#mv-q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
     $('#mv-mes').onchange = function () { S.mov.mes = Number(this.value); render(); };
     $('#mv-part').onchange = function () { S.mov.partida = this.value; if (this.value) S.mov.filtro = 'todos'; render(); };
-    $$('.mov', v).forEach(function (el) { el.onclick = function () { openEditor(el.getAttribute('data-id')); }; });
+    var bandeja = S.mov.filtro !== 'todos';
+    $$('.mov', v).forEach(function (el) {
+      el.onclick = function () { if (el._dragged) { el._dragged = false; return; } openEditor(el.getAttribute('data-id')); };
+      if (bandeja) bindRowSwipe(el);
+    });
+    if (bandeja && list.length && !S.mov.vistoAyuda) {
+      S.mov.vistoAyuda = true;
+      toast('Desliza un movimiento → para aceptar la propuesta, ← para clasificarlo a mano.', 4500);
+    }
     if ($('#accept-all')) $('#accept-all').onclick = function () {
       busy(true);
       api('apiAcceptSuggestions', withSug.map(function (m) { return m.id; })).then(function (r) {
         S.data.movimientos = r.movimientos; busy(false); toast(withSug.length + ' propuestas aceptadas.'); render();
       }, fail);
     };
+  }
+
+  // ---- bandeja: deslizar para clasificar
+  // → acepta la propuesta (se envían en lote al servidor), ← abre el editor. Con "Deshacer" en el aviso.
+  S.colaAceptar = [];
+  function bindRowSwipe(el) {
+    var m = S.data.movimientos.filter(function (x) { return x.id === el.getAttribute('data-id'); })[0];
+    if (!m) return;
+    var prop = m.tipologia || m.sugerencia;
+    el.classList.add('swipeable');
+    el.setAttribute('data-acc', prop ? '✓ Aceptar' : 'Sin propuesta');
+    var x0 = null, y0 = 0, dx = 0, drag = false;
+    el.addEventListener('touchstart', function (e) { if (e.touches.length !== 1) return; x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; dx = 0; drag = false; el.style.transition = 'none'; }, { passive: true });
+    el.addEventListener('touchmove', function (e) {
+      if (x0 === null) return;
+      dx = e.touches[0].clientX - x0;
+      var dy = e.touches[0].clientY - y0;
+      if (!drag && Math.abs(dx) > 12 && Math.abs(dx) > 1.5 * Math.abs(dy)) drag = true;
+      if (!drag) return;
+      el.style.transform = 'translateX(' + dx + 'px)';
+      el.classList.toggle('drag-right', dx > 0); el.classList.toggle('drag-left', dx < 0);
+      el.classList.toggle('armed', Math.abs(dx) > 90);
+    }, { passive: true });
+    el.addEventListener('touchend', function () {
+      if (x0 === null) return;
+      x0 = null;
+      el.style.transition = '';
+      if (!drag) return;
+      el._dragged = true;
+      if (dx > 90 && prop) { aceptarDeslizando(el, m, prop); return; }
+      el.style.transform = ''; el.classList.remove('drag-right', 'drag-left', 'armed');
+      if (dx > 90 && !prop) toast('Este movimiento no tiene propuesta: deslízalo a la izquierda para clasificarlo.');
+      if (dx < -90) { el._dragged = false; openEditor(m.id); }
+    });
+  }
+  function aceptarDeslizando(el, m, prop) {
+    var antes = { tipologia: m.tipologia, estado: m.estado, asignada: m.asignada };
+    el.style.transform = 'translateX(110%)'; el.style.opacity = '0';
+    setTimeout(function () { el.style.height = el.offsetHeight + 'px'; void el.offsetHeight; el.classList.add('gone'); }, 180);
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 420);
+    m.tipologia = prop; m.estado = 'manual'; m.asignada = prop;
+    S.colaAceptar.push(m.id);
+    renderTabs();
+    clearTimeout(S.colaTimer);
+    S.colaTimer = setTimeout(enviarCola, 1800);
+    toast('«' + FB.merchantKey(m) + '» → ' + prop, 4000, { label: 'Deshacer', fn: function () {
+      var i = S.colaAceptar.indexOf(m.id);
+      Object.assign(m, antes);
+      if (i >= 0) { S.colaAceptar.splice(i, 1); render(); return; }
+      busy(true);
+      api('apiClassify', [m.id], '', {}).then(function (r) { S.data.movimientos = r.movimientos; busy(false); render(); }, fail);
+    } });
+  }
+  function enviarCola() {
+    if (!S.colaAceptar.length) return;
+    var ids = S.colaAceptar.slice(); S.colaAceptar = [];
+    api('apiAcceptSuggestions', ids).then(function (r) {
+      // conservar lo aceptado mientras la petición estaba en vuelo
+      var pend = {}; S.colaAceptar.forEach(function (id) { pend[id] = true; });
+      var local = {}; S.data.movimientos.forEach(function (x) { if (pend[x.id]) local[x.id] = x; });
+      S.data.movimientos = r.movimientos.map(function (x) { return local[x.id] || x; });
+      renderTabs();
+    }, function (e) { S.colaAceptar = ids.concat(S.colaAceptar); fail(e); });
   }
 
   function openEditor(id) {
@@ -1779,7 +2036,15 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       S.pres.draft = { year: year, cells: FB.budgetByLine(S.data.presupuesto, year), dirty: false };
     }
     var D = S.pres.draft.cells;
-    var prev = FB.realByLine(S.data.movimientos, S.data.partidas, year - 1);
+    var notas = S.pres.draft.notas || {};
+    // referencia: año anterior; si aún no ha terminado, real + previsión de cierre
+    var prevLast = FB.lastMonthWithData(S.data.movimientos, year - 1);
+    var prev = {};
+    if (prevLast && prevLast < 12) {
+      FB.forecast({ year: year - 1, partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto })
+        .filas.forEach(function (f) { if (f.tipologia !== FB.SIN_GASTO && f.tipologia !== FB.SIN_INGRESO) prev[f.tipologia] = f.serie; });
+    } else prev = FB.realByLine(S.data.movimientos, S.data.partidas, year - 1);
+    var prevLabel = (year - 1) + (prevLast && prevLast < 12 ? ' (real + prev.)' : '');
     var hasPrev = Object.keys(prev).length > 0;
     var groups = {};
     S.data.partidas.forEach(function (p) { (groups[p.tipo + '|' + p.bloque] = groups[p.tipo + '|' + p.bloque] || []).push(p); });
@@ -1787,11 +2052,11 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     var keys = Object.keys(groups).sort(function (a, b) { return order[a.split('|')[0]] - order[b.split('|')[0]] || (a < b ? -1 : 1); });
     var h = '<div class="row spread" style="margin-bottom:10px"><div class="row"><label class="row">Presupuesto de <select id="pr-year">' +
       [S.year - 1, S.year, S.year + 1].map(function (y) { return '<option' + (y === year ? ' selected' : '') + '>' + y + '</option>'; }).join('') + '</select></label></div>' +
-      '<div class="row"><button class="btn small" id="pr-copy">Copiar de ' + (year - 1) + '</button>' + (hasPrev ? '<button class="btn small" id="pr-real">Proponer desde el real de ' + (year - 1) + '</button>' : '') +
+      '<div class="row"><button class="btn small" id="pr-copy">Copiar de ' + (year - 1) + '</button>' + (hasPrev ? '<button class="btn small" id="pr-asist">Asistente ' + year + '</button>' : '') +
       '<button class="btn primary" id="pr-save"' + (S.pres.draft.dirty ? '' : ' disabled') + '>Guardar</button></div></div>' +
-      '<p class="small muted">Edita mes a mes, o escribe un total anual para repartirlo en 12. ' + (hasPrev ? 'La columna gris es lo que se gastó de verdad en ' + (year - 1) + '.' : '') + '</p>';
+      '<p class="small muted">Edita mes a mes, o escribe un total anual para repartirlo en 12. ' + (hasPrev ? 'La última columna es ' + prevLabel + ', como referencia.' : '') + (Object.keys(notas).length ? ' Toca ⓘ para ver de dónde sale cada propuesta.' : '') + '</p>';
     h += '<div class="card" style="padding:0"><div class="tbl-wrap" style="margin:0;padding:0;max-height:70vh"><table><thead><tr><th style="position:sticky;left:0;z-index:2;background:var(--surface)">Partida</th>' +
-      FB.MESES_CORTO.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '<th>Total</th>' + (hasPrev ? '<th>Real ' + (year - 1) + '</th>' : '') + '</tr></thead><tbody>';
+      FB.MESES_CORTO.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '<th>Total</th>' + (hasPrev ? '<th>' + esc(prevLabel) + '</th>' : '') + '</tr></thead><tbody>';
     var Z = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
     keys.forEach(function (k) {
       var ps = groups[k], tipo = k.split('|')[0];
@@ -1800,7 +2065,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       ps.forEach(function (p) {
         var row = D[p.tipologia] || Z, tot = row.reduce(function (a, b) { return a + b; }, 0);
         var pr = (prev[p.tipologia] || Z).reduce(function (a, b) { return a + b; }, 0);
-        h += '<tr><td style="position:sticky;left:0;background:var(--surface);min-width:140px">' + esc(p.tipologia) + '</td>' +
+        h += '<tr><td style="position:sticky;left:0;background:var(--surface);min-width:140px">' + esc(p.tipologia) +
+          (notas[p.tipologia] ? ' <span class="info" data-tip="' + esc('<b>' + esc(p.tipologia) + '</b>' + esc(notas[p.tipologia])) + '">ⓘ</span>' : '') + '</td>' +
           row.map(function (x, i) { return '<td><input class="num" inputmode="decimal" data-t="' + esc(p.tipologia) + '" data-m="' + i + '" value="' + (x ? String(x).replace('.', ',') : '') + '"></td>'; }).join('') +
           '<td><input class="num" inputmode="decimal" data-t="' + esc(p.tipologia) + '" data-tot="1" value="' + (tot ? Math.round(tot) : '') + '" style="font-weight:600"></td>' +
           (hasPrev ? '<td class="num muted">' + (pr ? eur(pr) : '') + '</td>' : '') + '</tr>';
@@ -1828,19 +2094,69 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       if (!Object.keys(src).length) return toast('No hay presupuesto de ' + (year - 1) + '.');
       S.pres.draft.cells = JSON.parse(JSON.stringify(src)); S.pres.draft.dirty = true; render();
     };
-    if ($('#pr-real')) $('#pr-real').onclick = function () {
-      var pm = partidaByName();
-      var cells = {};
-      Object.keys(prev).forEach(function (t) { if (pm[t]) cells[t] = prev[t].map(function (x) { return Math.max(0, Math.round(x)); }); });
-      S.pres.draft.cells = cells; S.pres.draft.dirty = true; render();
-      toast('Propuesta cargada desde el real de ' + (year - 1) + '. Ajusta y guarda.');
-    };
+    if ($('#pr-asist')) $('#pr-asist').onclick = function () { openAsistente(year); };
     $('#pr-save').onclick = function () {
-      var celdas = [];
-      Object.keys(D).forEach(function (t) { D[t].forEach(function (x, i) { if (x) celdas.push({ mes: i + 1, tipologia: t, importe: x }); }); });
+      var celdas = [], com = S.pres.draft.comentarios || {};
+      Object.keys(D).forEach(function (t) { D[t].forEach(function (x, i) { if (x) celdas.push({ mes: i + 1, tipologia: t, importe: x, comentario: com[t + '|' + (i + 1)] || '' }); }); });
       busy(true);
       api('apiSaveBudget', year, celdas).then(function (b) { S.data.presupuesto = b; S.pres.draft = null; busy(false); toast('Presupuesto de ' + year + ' guardado.'); render(); }, fail);
     };
+  }
+
+  // ---- asistente de presupuesto
+  function pickPartida(re, tipo) {
+    tipo = tipo || 'Gasto';
+    var p = S.data.partidas.filter(function (x) { return re.test(FB.norm(x.tipologia)) && x.tipo === tipo; })[0];
+    return p ? p.tipologia : ((S.data.partidas.filter(function (x) { return x.tipo === (tipo || 'Gasto'); })[0] || {}).tipologia || '');
+  }
+  // Plantillas orientativas (importes de referencia a revisar, no datos vuestros)
+  function plantillasBebe() {
+    return [
+      { concepto: 'Bebé: pañales e higiene', tipologia: pickPartida(/SUPERMERCADO/), desde: 2, hasta: 12, importe: 60 },
+      { concepto: 'Bebé: alimentación infantil', tipologia: pickPartida(/SUPERMERCADO/), desde: 4, hasta: 12, importe: 40 },
+      { concepto: 'Bebé: equipamiento y ropa', tipologia: pickPartida(/ROPA PEQUES|PEQUES|ADICIONAL/), desde: 1, hasta: 2, importe: 300 },
+      { concepto: 'Bebé: farmacia y pediatra', tipologia: pickPartida(/FARMACIA/), desde: 2, hasta: 12, importe: 20 }
+    ];
+  }
+  function openAsistente(year) {
+    var cfg = {};
+    try { cfg = JSON.parse(S.data.config.asistente || '{}'); } catch (e) { cfg = {}; }
+    var st = cfg[year] || { inflacion: 3, subida: 0, ajustes: [] };
+    var mesOpts = function (sel) { return FB.MESES.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === Number(sel) ? ' selected' : '') + '>' + m.slice(0, 3) + '</option>'; }).join(''); };
+    var partOpts = function (sel) { return S.data.partidas.map(function (p) { return '<option' + (p.tipologia === sel ? ' selected' : '') + '>' + esc(p.tipologia) + '</option>'; }).join(''); };
+    var rowHtml = function (a) {
+      return '<tr><td><input class="wide" data-k="concepto" value="' + esc(a.concepto || '') + '" placeholder="Concepto" style="min-width:170px"></td><td><select data-k="tipologia">' + partOpts(a.tipologia) + '</select></td>' +
+        '<td><select data-k="desde">' + mesOpts(a.desde || 1) + '</select></td><td><select data-k="hasta">' + mesOpts(a.hasta || 12) + '</select></td>' +
+        '<td><input data-k="importe" inputmode="decimal" value="' + esc(a.importe == null ? '' : a.importe) + '" style="width:70px"></td><td><button class="btn small ghost" data-del aria-label="Quitar">✕</button></td></tr>';
+    };
+    openSheet('<div class="row spread"><h2>Asistente ' + year + '</h2><button class="btn small ghost" data-close>Cerrar</button></div>' +
+      '<p class="sub">Parte de ' + (year - 1) + ' (lo real y, si el año no ha acabado, la previsión de cierre). Las partidas estables se quedan en su importe típico de los últimos meses; las estacionales o esporádicas conservan su reparto. Lo sin clasificar no entra.</p>' +
+      '<div class="row"><label class="field">Inflación en gastos (%)<input type="number" id="as-inf" value="' + esc(st.inflacion) + '" style="width:90px"></label>' +
+      '<label class="field">Subida de ingresos (%)<input type="number" id="as-sub" value="' + esc(st.subida) + '" style="width:90px"></label></div>' +
+      '<p class="small muted">A los importes fijos (hipoteca, cuotas iguales todo el año) no se les aplica inflación.</p>' +
+      '<h3 style="font-size:14px;margin:12px 0 4px">Cambios que ya conocéis</h3><p class="small muted" style="margin:0 0 6px">Importe por mes, en el rango de meses. Negativo para restar (p. ej. una cuota que termina).</p>' +
+      '<div class="tbl-wrap"><table id="as-tbl"><thead><tr><th>Concepto</th><th style="text-align:left">Partida</th><th>Desde</th><th>Hasta</th><th>€/mes</th><th></th></tr></thead><tbody>' + st.ajustes.map(rowHtml).join('') + '</tbody></table></div>' +
+      '<div class="row" style="margin-top:8px"><button class="btn small" id="as-add">Añadir cambio</button><button class="btn small" id="as-bebe">Plantilla: nuevo bebé</button></div>' +
+      '<p class="small muted">La plantilla del bebé usa importes orientativos de referencia: ajústalos a lo que esperéis (lactancia, ropa heredada, escuela infantil…).</p>' +
+      '<div class="row" style="margin-top:12px"><button class="btn primary" id="as-go">Generar propuesta</button><button class="btn ghost" data-close>Cancelar</button></div>',
+      function (sh) {
+        var tb = $('#as-tbl tbody', sh);
+        var bindDel = function () { $$('[data-del]', tb).forEach(function (b) { b.onclick = function () { b.closest('tr').remove(); }; }); };
+        bindDel();
+        $('#as-add', sh).onclick = function () { tb.insertAdjacentHTML('beforeend', rowHtml({})); bindDel(); };
+        $('#as-bebe', sh).onclick = function () { tb.insertAdjacentHTML('beforeend', plantillasBebe().map(rowHtml).join('')); bindDel(); };
+        $('#as-go', sh).onclick = function () {
+          var ajustes = collectRows($('#as-tbl', sh)).map(function (a) { return { concepto: a.concepto, tipologia: a.tipologia, desde: Number(a.desde), hasta: Number(a.hasta), importe: FB.parseAmount(a.importe || '0') || 0 }; })
+            .filter(function (a) { return a.tipologia && a.importe; });
+          var inf = Number($('#as-inf', sh).value) || 0, sub = Number($('#as-sub', sh).value) || 0;
+          var r = FB.proposeBudget({ year: year, partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, inflacion: inf / 100, subidaIngresos: sub / 100, ajustes: ajustes });
+          S.pres.draft = { year: year, cells: r.celdas, notas: r.notas, comentarios: r.comentarios, dirty: true };
+          cfg[year] = { inflacion: inf, subida: sub, ajustes: ajustes };
+          api('apiSaveConfig', { asistente: JSON.stringify(cfg) }).then(function (c) { S.data.config = c; }, function () {});
+          closeSheet(); render();
+          toast('Propuesta de ' + year + ' cargada. Revísala (ⓘ explica cada fila) y pulsa Guardar.', 5000);
+        };
+      });
   }
 
   // ------------------------------------------------------------ Ajustes

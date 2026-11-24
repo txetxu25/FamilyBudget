@@ -79,6 +79,21 @@
     .dots i.on { width: 16px; border-radius: 3px; background: var(--accent); }
   }
 
+  /* bandeja deslizable */
+  .mov.swipeable { position: relative; touch-action: pan-y; transition: transform .18s ease-out, opacity .18s, height .22s, padding .22s; background: var(--page); }
+  .mov.swipeable::before { position: absolute; top: 0; bottom: 0; display: flex; align-items: center; width: 160px; font-size: 13px; font-weight: 600; opacity: .5; }
+  .mov.drag-right::before { content: attr(data-acc); right: 100%; justify-content: flex-end; padding-right: 14px; color: var(--good-ink); }
+  .mov.drag-left::before { content: "Clasificar ›"; left: 100%; padding-left: 14px; color: var(--accent); }
+  .mov.armed::before { opacity: 1; }
+  .mov.gone { height: 0 !important; padding-top: 0; padding-bottom: 0; overflow: hidden; border: 0; }
+  main { overflow-x: clip; }
+  .toast-btn { margin-left: 12px; background: none; border: 0; color: var(--accent); font-weight: 700; cursor: pointer; padding: 0; }
+  .info { color: var(--accent); cursor: pointer; font-size: 13px; }
+  @media (max-width: 600px) { .dcol { display: none; } }
+  .dbar { position: relative; display: block; height: 8px; background: var(--surface-2); border-radius: 4px; }
+  .dbar > span { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .dbar .neg { background: var(--div-pos); } .dbar .pos { background: var(--div-neg); }
+
   /* cards */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
   .card h2 { font-size: 15px; margin: 0 0 2px; font-weight: 650; }

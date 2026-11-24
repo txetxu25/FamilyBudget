@@ -44,7 +44,8 @@ var DEFAULT_CONFIG = {
   umbralRojo: '0.3',
   minimoDesviacion: '50',
   excelCopia: '',         // fichero .xlsx de Drive donde volcar una copia (vacío = se crea al exportar)
-  excelAuto: 'no'         // 'si' = exportar la copia .xlsx tras cada procesado diario
+  excelAuto: 'no',        // 'si' = exportar la copia .xlsx tras cada procesado diario
+  asistente: ''           // parámetros y ajustes del asistente de presupuesto, por año (JSON)
 };
 
 // ------------------------------------------------------------------ arranque

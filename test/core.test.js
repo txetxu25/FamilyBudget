@@ -332,3 +332,41 @@ test('forecast: lo esporádico asume el presupuesto y lo sin clasificar no se pr
   assert.equal(sin.cierre, 80);
   assert.equal(f.totales.Gasto.cierre, 600 + 600 + 900 + 80);
 });
+
+test('reglas: espacios y puntuación no impiden la coincidencia en patrones largos', () => {
+  const rules = FB.prepareRules([{ patron: 'GASCO ELECT. GAS', tipologia: 'Luz' }, { patron: 'VIA T', tipologia: 'Ocio Familia' }]);
+  assert.equal(FB.matchRule({ concepto: 'GASCO ELECT.GAS', detalle: '', importe: -50, fecha: '2026-01-01' }, rules).rule.tipologia, 'Luz');
+  assert.equal(FB.matchRule({ concepto: 'VIATGES SOL', detalle: '', importe: -50, fecha: '2026-01-01' }, rules).rule, null, 'un patrón corto no se compacta');
+});
+
+test('compareYears: real frente al mismo periodo del año anterior', () => {
+  const movs = monthly('Supermercado', 1, 6, -100).concat(
+    [1, 2, 3, 4, 5, 6].map((m) => mov('2025-0' + m + '-10', 'S', -80, { tipologia: 'Supermercado' })),
+    [mov('2025-09-10', 'S', -500, { tipologia: 'Supermercado' })]);
+  const c = FB.compareYears({ year: 2026, partidas: PARTIDAS, movimientos: movs });
+  assert.equal(c.hasta, 6);
+  const s = c.filas.find((f) => f.tipologia === 'Supermercado');
+  assert.equal(s.actual, 600);
+  assert.equal(s.anterior, 480, 'septiembre de 2025 queda fuera del periodo');
+  assert.equal(c.totales.Gasto.dif, 120);
+  assert.equal(FB.compareYears({ year: 2026, partidas: PARTIDAS, movimientos: monthly('Supermercado', 1, 6, -100) }), null, 'sin año anterior no hay comparación');
+});
+
+test('proposeBudget: fijos sin inflación, variables con inflación, estacionales con su reparto y ajustes', () => {
+  const movs = []
+    .concat(monthly('Supermercado', 1, 12, -300).map((m) => Object.assign(m, { fecha: m.fecha.replace('2026', '2025') })))
+    .concat([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => mov('2025-' + String(m).padStart(2, '0') + '-01', 'PRESTAMO', -1000, { tipologia: 'Asignacion A' })))
+    .concat([mov('2025-08-03', 'HOTEL MAR', -2000, { tipologia: 'Ocio Familia' })])
+    .concat([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map((m) => mov('2025-' + String(m).padStart(2, '0') + '-05', 'LUZCO', m <= 2 || m >= 11 ? -200 : -50, { tipologia: 'Luz' })));
+  // el supermercado varía un poco cada mes (no es "fijo")
+  movs.filter((m) => m.tipologia === 'Supermercado').forEach((m, i) => { m.importe = -(280 + (i % 3) * 20); });
+  const r = FB.proposeBudget({ year: 2026, partidas: PARTIDAS, movimientos: movs, presupuesto: [], inflacion: 0.1,
+    ajustes: [{ concepto: 'Bebé', tipologia: 'Supermercado', desde: 3, hasta: 12, importe: 50 }] });
+  assert.deepEqual(r.celdas['Asignacion A'], new Array(12).fill(1000), 'importe fijo: sin inflación');
+  assert.equal(r.celdas.Supermercado[0], 330, 'mediana jul–dic (300) × 1,1');
+  assert.equal(r.celdas.Supermercado[2], 380, '+50 del ajuste desde marzo');
+  assert.equal(r.celdas.Luz[0], 220); assert.equal(r.celdas.Luz[5], 55, 'estacional: conserva el reparto');
+  assert.equal(r.celdas['Ocio Familia'][7], 2200);
+  assert.match(r.notas['Ocio Familia'], /HOTEL MAR: ¿se repetirá\?/);
+  assert.match(r.comentarios['Supermercado|3'], /Bebé \+50/);
+});
