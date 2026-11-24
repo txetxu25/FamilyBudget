@@ -35,14 +35,13 @@
   .num { font-variant-numeric: tabular-nums; }
 
   /* layout */
-  header.top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--page) 88%, transparent);
-    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  /* barras opacas: nada se transparenta ni se difumina por debajo */
+  header.top { position: sticky; top: 0; z-index: 5; background: var(--page); border-bottom: 1px solid var(--border); }
   .top-inner { max-width: 1100px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
   .top h1 { font-size: 17px; margin: 0; font-weight: 650; flex: 1; min-width: 140px; }
   main { max-width: 1100px; margin: 0 auto; padding: 14px 16px 110px; }
   nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; justify-content: center;
-    padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--surface) 92%, transparent);
-    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--border); }
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: var(--surface); border-top: 1px solid var(--border); }
   nav.tabs button { flex: 1; max-width: 140px; border: 0; background: none; padding: 6px 4px; border-radius: 10px;
     display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--ink-2); cursor: pointer; }
   nav.tabs button svg { width: 22px; height: 22px; }
@@ -75,6 +74,20 @@
   label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
   label.field > input, label.field > select { color: var(--ink); }
   .check { display: flex; gap: 8px; align-items: center; }
+
+  /* cambio de pantalla al deslizar */
+  @keyframes from-right { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes from-left { from { transform: translateX(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  main.enter-right { animation: from-right .22s ease-out; }
+  main.enter-left { animation: from-left .22s ease-out; }
+  @media (prefers-reduced-motion: reduce) { main.enter-right, main.enter-left { animation: none; } }
+  .dots { display: none; }
+  @media (max-width: 899px) {
+    .dots { display: flex; justify-content: center; gap: 6px; position: fixed; left: 0; right: 0; z-index: 6;
+      bottom: calc(62px + env(safe-area-inset-bottom)); pointer-events: none; }
+    .dots i { width: 6px; height: 6px; border-radius: 50%; background: var(--axis); transition: width .2s, background .2s; }
+    .dots i.on { width: 16px; border-radius: 3px; background: var(--accent); }
+  }
 
   /* cards */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
@@ -176,6 +189,7 @@
   </header>
   <nav class="tabs" role="tablist" id="tabs"></nav>
   <main id="view" aria-live="polite"><p class="empty">Cargando…</p></main>
+  <div class="dots" id="dots" aria-hidden="true"></div>
   <div class="tip" id="tip" role="tooltip"></div>
   <div class="sheet-bg" id="sheet-bg"></div>
   <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
@@ -1425,6 +1439,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     $$('#tabs button').forEach(function (b) { b.onclick = function () { go(b.getAttribute('data-tab')); }; });
   }
   function go(tab, opts) {
+    var from = TABS.map(function (t) { return t[0]; }).indexOf(S.tab), to = TABS.map(function (t) { return t[0]; }).indexOf(tab);
+    S.slide = from < 0 || to < 0 || from === to ? '' : (to > from ? 'enter-right' : 'enter-left');
     S.tab = tab;
     if (opts) Object.assign(S[tab === 'movimientos' ? 'mov' : tab], opts);
     try { history.replaceState(null, '', '#' + tab); } catch (e) { /* iframe de Apps Script */ }
@@ -1438,7 +1454,44 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     var fn = { seguimiento: viewSeguimiento, movimientos: viewMovimientos, presupuesto: viewPresupuesto, ajustes: viewAjustes }[S.tab] || viewSeguimiento;
     try { fn(v); } catch (e) { v.innerHTML = '<div class="banner err">' + esc(e.message) + '</div>'; console.error(e); }
     bindTips(v);
+    v.classList.remove('enter-right', 'enter-left');
+    if (S.slide) { void v.offsetWidth; v.classList.add(S.slide); S.slide = ''; }
+    var dots = $('#dots');
+    if (dots) dots.innerHTML = TABS.map(function (t) { return '<i class="' + (t[0] === S.tab ? 'on' : '') + '"></i>'; }).join('');
   }
+
+  // ------------------------------------------------------------ deslizar entre pantallas
+  // Deslizar a izquierda/derecha cambia de pestaña. No se activa si el gesto empieza en algo que ya se desplaza
+  // en horizontal (tablas, mapa de calor), en un campo de formulario o con una hoja de detalle abierta.
+  (function () {
+    var x0 = null, y0 = 0, t0 = 0;
+    function scrollsSideways(el) {
+      for (; el && el !== document.body; el = el.parentElement) {
+        if (el.scrollWidth > el.clientWidth + 4) {
+          var ov = getComputedStyle(el).overflowX;
+          if (ov === 'auto' || ov === 'scroll') return true;
+        }
+      }
+      return false;
+    }
+    document.addEventListener('touchstart', function (e) {
+      x0 = null;
+      if (e.touches.length !== 1 || $('#sheet').style.display === 'block') return;
+      var el = e.target;
+      if (el.closest && el.closest('input, select, textarea, nav.tabs, header.top')) return;
+      if (scrollsSideways(el)) return;
+      x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; t0 = Date.now();
+    }, { passive: true });
+    document.addEventListener('touchend', function (e) {
+      if (x0 === null) return;
+      var t = e.changedTouches[0], dx = t.clientX - x0, dy = t.clientY - y0;
+      x0 = null;
+      if (Date.now() - t0 > 700 || Math.abs(dx) < 60 || Math.abs(dx) < 1.8 * Math.abs(dy)) return;
+      var names = TABS.map(function (tt) { return tt[0]; });
+      var j = names.indexOf(S.tab) + (dx < 0 ? 1 : -1);
+      if (j >= 0 && j < names.length) go(names[j]);
+    }, { passive: true });
+  })();
 
   // ------------------------------------------------------------ Seguimiento (con insights y previsión)
   function sumR(a, from, to) { var s = 0; for (var i = from; i <= to; i++) s += a[i] || 0; return s; }
