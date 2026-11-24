@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <base target="_top">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Presupuesto">
+  <title>Presupuesto familiar</title>
+  <?!= include('Styles'); ?>
+</head>
+<body>
+  <header class="top">
+    <div class="top-inner">
+      <h1 id="title">Presupuesto familiar</h1>
+      <select id="year" aria-label="Año"></select>
+      <button class="btn small" id="refresh" title="Volver a cargar">↻</button>
+    </div>
+  </header>
+  <nav class="tabs" role="tablist" id="tabs"></nav>
+  <main id="view" aria-live="polite"><p class="empty">Cargando…</p></main>
+  <div class="tip" id="tip" role="tooltip"></div>
+  <div class="sheet-bg" id="sheet-bg"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
+  <div class="toast" id="toast" role="status"></div>
+  <?!= include('CoreClient'); ?>
+  <?!= include('App'); ?>
+</body>
+</html>
