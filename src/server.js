@@ -54,7 +54,7 @@ function setup() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) throw new Error('Abre el editor desde la hoja (Extensiones ▸ Apps Script) para que el script quede vinculado.');
   PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID', ss.getId());
-  Object.keys(HEADERS).forEach(function (name) { ensureSheet_(ss, name); });
+  Object.keys(HEADERS).forEach(function (name) { ensureSheet_(ss, name, true); }); // formatos siempre
   var cfg = readConfig_();
   var add = [];
   Object.keys(DEFAULT_CONFIG).forEach(function (k) { if (cfg[k] === undefined) add.push([k, DEFAULT_CONFIG[k]]); });
@@ -92,7 +92,7 @@ function ss_() {
   throw new Error('Falta ejecutar setup() desde el editor de Apps Script.');
 }
 
-function ensureSheet_(ss, name) {
+function ensureSheet_(ss, name, force) {
   var sh = ss.getSheetByName(name);
   if (!sh) sh = ss.insertSheet(name);
   var hdr = HEADERS[name];
@@ -109,7 +109,7 @@ function ensureSheet_(ss, name) {
     var missing = hdr.filter(function (h) { return have.indexOf(FB.norm(h)) < 0; });
     if (missing.length) { sh.getRange(1, cur.length + 1, 1, missing.length).setValues([missing]).setFontWeight('bold'); cur = cur.concat(missing); changed = true; }
   }
-  if (!changed) return sh;
+  if (!changed && !force) return sh;
   var over = FORMAT_OVERRIDES[name] || {};
   cur.forEach(function (h, i) {
     var f = over[h] || FORMATS[h] || '@';
@@ -200,7 +200,7 @@ function readMovs_() {
     };
     // fila añadida a mano en la hoja (p. ej. un gasto en efectivo): sin ID
     if (!m.id && m.fecha) {
-      m.id = 'm' + FB.movementId(m);
+      m.id = 'a' + FB.movementId(m).slice(1); // 'a' = añadido a mano en la hoja
       m.estado = m.tipologia ? 'manual' : 'pendiente';
       m.archivo = m.archivo || '(a mano)';
     }
@@ -478,7 +478,8 @@ function doGet() {
   try { checkAccess_(); } catch (e) {
     return HtmlService.createHtmlOutput('<p style="font:16px system-ui;padding:24px">' + e.message + '</p>');
   }
-  return HtmlService.createTemplateFromFile('Index').evaluate()
+  // Index.html ya viene con estilos y scripts incrustados por el build (un solo fichero que pegar)
+  return HtmlService.createHtmlOutputFromFile('Index')
     .setTitle('Presupuesto familiar')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1, viewport-fit=cover')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT);

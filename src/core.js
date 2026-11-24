@@ -160,7 +160,8 @@ var FB = (function () {
    * solapa con otro produce los mismos ids (se deduplica solo).
    */
   function movementId(m) {
-    return hash([m.cuenta, m.fecha, m.fechaValor, norm(m.concepto), norm(m.detalle),
+    // prefijo con letra: un id solo hexadecimal ("1e5…") lo convertiría Sheets en número
+    return 'm' + hash([m.cuenta, m.fecha, m.fechaValor, norm(m.concepto), norm(m.detalle),
       round2(m.importe).toFixed(2), m.saldo == null ? '' : round2(m.saldo).toFixed(2)].join('|'));
   }
 

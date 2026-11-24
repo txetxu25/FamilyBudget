@@ -1,3 +1,4 @@
+<!-- GENERADO por scripts/build.js desde src/. No editar a mano. -->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -7,7 +8,163 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="Presupuesto">
   <title>Presupuesto familiar</title>
-  <?!= include('Styles'); ?>
+  <style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7; --surface: #fcfcfb; --surface-2: #f3f2ee; --border: rgba(11,11,11,0.10);
+    --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7;
+    --real: #2a78d6; --ppto: #b3b2ab; --accent: #2a78d6; --accent-ink: #ffffff;
+    --good: #0ca30c; --good-ink: #006300; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
+    --div-neg: #2a78d6; --div-mid: #f0efec; --div-pos: #e34948;
+    --radius: 14px; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      color-scheme: dark;
+      --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232322; --border: rgba(255,255,255,0.10);
+      --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781; --grid: #2c2c2a; --axis: #383835;
+      --real: #3987e5; --ppto: #5d5c57; --accent: #3987e5;
+      --good-ink: #0ca30c; --div-neg: #3987e5; --div-mid: #383835; --div-pos: #e66767;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--page); color: var(--ink); }
+  body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif; -webkit-font-smoothing: antialiased; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  /* layout */
+  header.top { position: sticky; top: 0; z-index: 5; background: color-mix(in srgb, var(--page) 88%, transparent);
+    backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); }
+  .top-inner { max-width: 1100px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .top h1 { font-size: 17px; margin: 0; font-weight: 650; flex: 1; min-width: 140px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 14px 16px 110px; }
+  nav.tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 6; display: flex; justify-content: center;
+    padding: 6px 8px calc(6px + env(safe-area-inset-bottom)); background: color-mix(in srgb, var(--surface) 92%, transparent);
+    backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid var(--border); }
+  nav.tabs button { flex: 1; max-width: 140px; border: 0; background: none; padding: 6px 4px; border-radius: 10px;
+    display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--ink-2); cursor: pointer; }
+  nav.tabs button svg { width: 22px; height: 22px; }
+  nav.tabs button[aria-selected="true"] { color: var(--accent); font-weight: 600; }
+  nav.tabs button { position: relative; }
+  nav.tabs .badge { position: absolute; top: 0; left: calc(50% + 4px); }
+  @media (min-width: 900px) {
+    nav.tabs { position: sticky; top: 0; bottom: auto; border-top: 0; border-bottom: 1px solid var(--border); padding: 4px 8px; }
+    nav.tabs button { flex-direction: row; font-size: 14px; gap: 6px; max-width: 170px; }
+    nav.tabs button svg { width: 18px; height: 18px; }
+    nav.tabs .badge { position: static; }
+    header.top { position: static; }
+    main { padding-bottom: 40px; }
+  }
+
+  /* controls */
+  select, input[type=text], input[type=number], input[type=search], textarea {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px; min-height: 38px; }
+  textarea { width: 100%; min-height: 70px; }
+  .btn { border: 1px solid var(--border); background: var(--surface); padding: 8px 14px; border-radius: 10px; cursor: pointer; min-height: 38px; white-space: nowrap; }
+  .btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+  .btn.ghost { background: transparent; }
+  .btn.small { padding: 4px 10px; min-height: 30px; font-size: 13px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .row.spread { justify-content: space-between; }
+  .seg { display: inline-flex; background: var(--surface-2); border-radius: 10px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; color: var(--ink-2); font-size: 14px; }
+  .seg button[aria-pressed="true"] { background: var(--surface); color: var(--ink); box-shadow: var(--shadow); font-weight: 600; }
+  label.field { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ink-2); }
+  label.field > input, label.field > select { color: var(--ink); }
+  .check { display: flex; gap: 8px; align-items: center; }
+
+  /* cards */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
+  .card h2 { font-size: 15px; margin: 0 0 2px; font-weight: 650; }
+  .card .sub { color: var(--ink-2); font-size: 13px; margin: 0 0 10px; }
+  .grid { display: grid; gap: 14px; }
+  .kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+  @media (min-width: 900px) { .kpis { grid-template-columns: repeat(4, 1fr); } .grid.two { grid-template-columns: 1fr 1fr; } }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
+  .kpi .label { font-size: 12px; color: var(--ink-2); }
+  .kpi .value { font-size: 24px; font-weight: 650; margin: 2px 0; letter-spacing: -0.01em; }
+  .kpi .foot { font-size: 12px; color: var(--ink-2); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+
+  /* status (icono + texto; nunca solo color) */
+  .st { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; padding: 1px 8px 1px 6px; border-radius: 999px; background: var(--surface-2); color: var(--ink); white-space: nowrap; }
+  .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .st.ok::before { background: var(--good); } .st.aviso::before { background: var(--warning); }
+  .st.alerta::before { background: var(--critical); } .st.sin-ppto::before { background: var(--serious); }
+  .badge { background: var(--critical); color: #fff; border-radius: 999px; font-size: 11px; padding: 0 6px; min-width: 18px; text-align: center; font-weight: 600; }
+  .banner { border-radius: 12px; padding: 10px 12px; margin-bottom: 14px; background: color-mix(in srgb, var(--warning) 18%, var(--surface)); border: 1px solid color-mix(in srgb, var(--warning) 50%, transparent); font-size: 14px; }
+  .banner.err { background: color-mix(in srgb, var(--critical) 14%, var(--surface)); border-color: color-mix(in srgb, var(--critical) 45%, transparent); }
+
+  /* tables */
+  .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -16px; padding: 0 16px; }
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { padding: 7px 8px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+  th:first-child, td:first-child { text-align: left; white-space: normal; }
+  th { font-weight: 600; color: var(--ink-2); font-size: 12px; position: sticky; top: 0; background: var(--surface); }
+  tr.block td { font-weight: 650; background: var(--surface-2); cursor: pointer; }
+  tr.line td:first-child { padding-left: 20px; }
+  tr.line { cursor: pointer; }
+  tr.line:hover td { background: var(--surface-2); }
+  .neg { color: var(--ink); } .pos { color: var(--ink); }
+  td input { width: 74px; text-align: right; padding: 4px 6px; min-height: 30px; }
+  td input.wide { width: 100%; text-align: left; }
+
+  /* movimientos */
+  .mov { display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; padding: 10px 2px; border-bottom: 1px solid var(--grid); cursor: pointer; }
+  .mov:hover { background: var(--surface-2); }
+  .mov .c { font-weight: 550; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mov .d { font-size: 12px; color: var(--muted); grid-column: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .mov .a { text-align: right; font-weight: 600; }
+  .mov .t { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .chip { font-size: 12px; padding: 2px 8px; border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border); }
+  .chip.estado-pendiente { border-style: dashed; color: var(--ink-2); }
+  .chip.estado-propuesta { border-style: dashed; }
+  .day { font-size: 12px; color: var(--ink-2); font-weight: 600; margin: 14px 0 2px; }
+  .day::first-letter { text-transform: uppercase; }
+
+  /* insights */
+  h2.section { font-size: 13px; margin: 18px 2px 8px; color: var(--ink-2); text-transform: uppercase; letter-spacing: .04em; }
+  .ins h3 { margin: 0; font-size: 16px; }
+  .ins ul { margin: 8px 0 0; padding-left: 18px; }
+  .ins li { margin: 4px 0; }
+  .bars-mini { margin-top: 10px; display: grid; gap: 4px; font-size: 12px; }
+  .bars-mini .b { display: grid; grid-template-columns: minmax(90px, 36%) 1fr auto; gap: 8px; align-items: center; }
+  .bars-mini .b span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bars-mini .bar { height: 8px; border-radius: 4px; background: var(--real); }
+  .bars-mini .bar.new { background: repeating-linear-gradient(135deg, var(--real) 0 3px, color-mix(in srgb, var(--real) 45%, var(--surface)) 3px 6px); }
+
+  /* charts */
+  .chart { width: 100%; position: relative; }
+  .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+  .chart text { fill: var(--muted); font-size: 11px; }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--ink-2); margin: 4px 0 6px; flex-wrap: wrap; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+  .tip { position: fixed; z-index: 50; pointer-events: none; background: var(--surface); border: 1px solid var(--border); box-shadow: 0 6px 24px rgba(0,0,0,.12);
+    border-radius: 10px; padding: 8px 10px; font-size: 12px; min-width: 140px; display: none; }
+  .tip b { display: block; margin-bottom: 4px; font-size: 13px; }
+  .tip .r { display: flex; justify-content: space-between; gap: 12px; }
+  .heat { overflow-x: auto; }
+  .heat table td { text-align: center; padding: 0; border: 2px solid var(--surface); font-size: 11px; height: 30px; min-width: 44px; }
+  .heat table td:first-child { text-align: left; padding: 0 8px 0 0; font-size: 12px; min-width: 110px; border: 0; }
+
+  /* sheet (modal) */
+  .sheet-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 40; display: none; }
+  .sheet { position: fixed; z-index: 41; left: 0; right: 0; bottom: 0; max-height: 92vh; overflow: auto; background: var(--surface);
+    border-radius: 18px 18px 0 0; padding: 16px 16px calc(20px + env(safe-area-inset-bottom)); display: none; box-shadow: 0 -8px 40px rgba(0,0,0,.2); }
+  @media (min-width: 700px) { .sheet { left: 50%; right: auto; bottom: auto; top: 50%; transform: translate(-50%, -50%); width: 560px; border-radius: 18px; } }
+  .sheet h2 { margin: 0 0 4px; font-size: 18px; }
+  .sheet .stack { display: grid; gap: 12px; margin-top: 12px; }
+  .toast { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--page);
+    padding: 10px 16px; border-radius: 12px; z-index: 60; font-size: 14px; display: none; max-width: 90vw; }
+  .loading { opacity: .55; pointer-events: none; }
+  .muted { color: var(--muted); } .small { font-size: 12px; }
+  .empty { text-align: center; color: var(--ink-2); padding: 30px 10px; }
+  details summary { cursor: pointer; font-weight: 600; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+</style>
+
 </head>
 <body>
   <header class="top">
@@ -23,7 +180,1784 @@
   <div class="sheet-bg" id="sheet-bg"></div>
   <div class="sheet" id="sheet" role="dialog" aria-modal="true"></div>
   <div class="toast" id="toast" role="status"></div>
-  <?!= include('CoreClient'); ?>
-  <?!= include('App'); ?>
+  <script>
+/**
+ * FamilyBudget · núcleo de lógica compartido.
+ *
+ * Este fichero se ejecuta en dos sitios:
+ *  - En Apps Script (servidor), como un .gs más: expone el global `FB`.
+ *  - En el navegador (cliente), incrustado por el build en Core.html.
+ * Y en Node para los tests (module.exports al final).
+ *
+ * No debe usar nada específico de Apps Script ni del DOM.
+ */
+var FB = (function () {
+  'use strict';
+
+  var MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio',
+    'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+  var MESES_CORTO = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+
+  var TIPOS = ['Ingreso', 'Gasto', 'Traspaso'];
+  var SIN_GASTO = '(Sin clasificar · gasto)';
+  var SIN_INGRESO = '(Sin clasificar · ingreso)';
+
+  // ---------------------------------------------------------------- utilidades
+
+  /** Mayúsculas, sin tildes, espacios colapsados. Base de toda comparación de texto. */
+  function norm(s) {
+    return String(s == null ? '' : s)
+      .toUpperCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/Ç/g, 'C')
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
+  function round2(x) { return Math.round((Number(x) || 0) * 100) / 100; }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  /** Fecha como 'YYYY-MM-DD'. */
+  function ymd(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+
+  /**
+   * Convierte a Date (hora local, mediodía para evitar saltos de zona):
+   * Date, número de serie Excel, 'dd/mm/yyyy', 'dd-mm-yyyy' o 'yyyy-mm-dd'.
+   */
+  function toDate(v) {
+    if (v == null || v === '') return null;
+    if (Object.prototype.toString.call(v) === '[object Date]') {
+      if (isNaN(v.getTime())) return null;
+      return new Date(v.getFullYear(), v.getMonth(), v.getDate(), 12);
+    }
+    if (typeof v === 'number' && isFinite(v)) {
+      if (v < 20000 || v > 80000) return null; // fuera de 1954–2119: no es una fecha
+      var ms = Math.round((v - 25569) * 86400000); // 25569 = 1970-01-01 en serie Excel
+      var u = new Date(ms);
+      return new Date(u.getUTCFullYear(), u.getUTCMonth(), u.getUTCDate(), 12);
+    }
+    var s = String(v).trim();
+    var m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+    if (m) return new Date(+m[3], +m[2] - 1, +m[1], 12);
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) return new Date(+m[1], +m[2] - 1, +m[3], 12);
+    return null;
+  }
+
+  /** '1.234,56' | '-12,30' | 12.3 -> número. */
+  function parseAmount(v) {
+    if (typeof v === 'number') return v;
+    if (v == null) return NaN;
+    var s = String(v).replace(/[€\s]/g, '');
+    if (s === '') return NaN;
+    if (s.indexOf(',') >= 0) s = s.replace(/\./g, '').replace(',', '.');
+    return Number(s);
+  }
+
+  /** Hash FNV-1a de 32 bits en hex: id estable de un movimiento. */
+  function hash(str) {
+    var h = 0x811c9dc5;
+    for (var i = 0; i < str.length; i++) {
+      h ^= str.charCodeAt(i);
+      h = Math.imul(h, 0x01000193) >>> 0;
+    }
+    return ('0000000' + h.toString(16)).slice(-8);
+  }
+
+  function monthIndex(name) {
+    var n = norm(name).toLowerCase();
+    for (var i = 0; i < 12; i++) if (MESES[i] === n) return i + 1;
+    var k = parseInt(n, 10);
+    return k >= 1 && k <= 12 ? k : 0;
+  }
+
+  // --------------------------------------------------------- lectura extractos
+
+  var HEADER_ALIASES = {
+    fecha: ['FECHA', 'FECHA OPERACION', 'F. OPERACION'],
+    fechaValor: ['FECHA VALOR', 'F. VALOR'],
+    concepto: ['MOVIMIENTO', 'CONCEPTO', 'DESCRIPCION'],
+    detalle: ['MAS DATOS', 'OBSERVACIONES', 'CONCEPTO AMPLIADO', 'DETALLE'],
+    importe: ['IMPORTE', 'IMPORTE EUR', 'CANTIDAD'],
+    saldo: ['SALDO', 'SALDO EUR', 'SALDO DISPONIBLE']
+  };
+
+  function findHeader(rows) {
+    for (var r = 0; r < Math.min(rows.length, 30); r++) {
+      var map = {};
+      var row = rows[r] || [];
+      for (var c = 0; c < row.length; c++) {
+        var h = norm(row[c]);
+        for (var key in HEADER_ALIASES) {
+          if (map[key] === undefined && HEADER_ALIASES[key].indexOf(h) >= 0) map[key] = c;
+        }
+      }
+      if (map.fecha !== undefined && map.importe !== undefined && map.concepto !== undefined) {
+        return { row: r, cols: map };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Lee la rejilla de un extracto (filas x columnas, tal y como sale de una hoja).
+   * Devuelve { cuenta, movimientos[] } con movimientos en el orden del fichero
+   * (los bancos suelen poner el más reciente primero). `orden` es la posición en el fichero.
+   */
+  function parseStatement(rows, fileName) {
+    var hdr = findHeader(rows);
+    if (!hdr) throw new Error('No encuentro la cabecera (Fecha / Movimiento / Importe) en ' + (fileName || 'el extracto'));
+    var cuenta = '';
+    for (var r = 0; r < hdr.row; r++) {
+      var m = norm((rows[r] || []).join(' ')).match(/ES\d{2}[\d ]{20,}/);
+      if (m) { var digits = m[0].replace(/\D/g, ''); cuenta = '····' + digits.slice(-4); break; }
+    }
+    var c = hdr.cols;
+    var out = [];
+    for (var i = hdr.row + 1; i < rows.length; i++) {
+      var row = rows[i] || [];
+      var f = toDate(row[c.fecha]);
+      var imp = parseAmount(row[c.importe]);
+      if (!f || !isFinite(imp)) continue;
+      var fv = c.fechaValor !== undefined ? toDate(row[c.fechaValor]) : null;
+      var saldo = c.saldo !== undefined ? parseAmount(row[c.saldo]) : NaN;
+      out.push({
+        fecha: ymd(f),
+        fechaValor: fv ? ymd(fv) : '',
+        concepto: String(row[c.concepto] == null ? '' : row[c.concepto]).trim(),
+        detalle: c.detalle !== undefined ? String(row[c.detalle] == null ? '' : row[c.detalle]).trim() : '',
+        importe: round2(imp),
+        saldo: isFinite(saldo) ? round2(saldo) : null,
+        cuenta: cuenta,
+        archivo: fileName || '',
+        orden: i
+      });
+    }
+    return { cuenta: cuenta, movimientos: out };
+  }
+
+  /**
+   * Id estable. Incluye el saldo: dos compras idénticas el mismo día tienen
+   * saldos distintos, así que no colisionan; y un extracto re-descargado que
+   * solapa con otro produce los mismos ids (se deduplica solo).
+   */
+  function movementId(m) {
+    // prefijo con letra: un id solo hexadecimal ("1e5…") lo convertiría Sheets en número
+    return 'm' + hash([m.cuenta, m.fecha, m.fechaValor, norm(m.concepto), norm(m.detalle),
+      round2(m.importe).toFixed(2), m.saldo == null ? '' : round2(m.saldo).toFixed(2)].join('|'));
+  }
+
+  /** Orden cronológico: fecha ascendente y, dentro del día, al revés que el fichero. */
+  function chronoSort(movs) {
+    return movs.slice().sort(function (a, b) {
+      if (a.fecha !== b.fecha) return a.fecha < b.fecha ? -1 : 1;
+      if (a.archivo !== b.archivo) return a.archivo < b.archivo ? -1 : 1;
+      return b.orden - a.orden;
+    });
+  }
+
+  /**
+   * Comprueba la cadena de saldos: saldo(n) = saldo(n-1) + importe(n).
+   * Una rotura significa que falta un extracto, hay un hueco o un duplicado.
+   * Si dentro de un mismo día el banco ordena raro, se reintenta reordenando el día.
+   */
+  function checkBalance(movs) {
+    var byAccount = {};
+    movs.forEach(function (m) {
+      if (m.saldo == null) return;
+      (byAccount[m.cuenta || ''] = byAccount[m.cuenta || ''] || []).push(m);
+    });
+    var breaks = [];
+    var checked = 0;
+    Object.keys(byAccount).forEach(function (acc) {
+      var list = chronoSort(byAccount[acc]);
+      // agrupar por día para tolerar el orden intradía
+      var days = [];
+      list.forEach(function (m) {
+        var d = days[days.length - 1];
+        if (!d || d.fecha !== m.fecha) days.push(d = { fecha: m.fecha, items: [] });
+        d.items.push(m);
+      });
+      var prev = null;
+      days.forEach(function (d) {
+        if (prev == null) { prev = d.items[d.items.length - 1].saldo; checked += d.items.length; return; }
+        var sum = d.items.reduce(function (s, m) { return s + m.importe; }, 0);
+        // el saldo final del día debe ser saldo previo + suma del día; y debe existir
+        // un movimiento del día cuyo saldo sea ese final
+        var expectedEnd = round2(prev + sum);
+        var ends = d.items.map(function (m) { return m.saldo; });
+        checked += d.items.length;
+        if (ends.indexOf(expectedEnd) < 0) {
+          var actualEnd = d.items[d.items.length - 1].saldo;
+          // saldo real con el que empezó el día según el banco
+          var first = d.items[0];
+          var actualStart = round2(first.saldo - first.importe);
+          breaks.push({
+            cuenta: acc, fecha: d.fecha,
+            saldoEsperado: round2(prev), saldoBanco: actualStart,
+            diferencia: round2(actualStart - prev)
+          });
+          prev = actualEnd;
+        } else {
+          prev = expectedEnd;
+        }
+      });
+    });
+    return { ok: breaks.length === 0, revisados: checked, roturas: breaks };
+  }
+
+  // -------------------------------------------------------------- clasificación
+
+  function matchText(m) { return norm((m.concepto || '') + ' ' + (m.detalle || '')); }
+
+  /** Tipo de movimiento por signo. */
+  function sentido(m) { return m.importe < 0 ? 'Gasto' : 'Ingreso'; }
+
+  function parseMeses(v) {
+    if (v == null || v === '') return [];
+    return String(v).split(/[,;\s]+/).map(function (x) { return monthIndex(x); }).filter(Boolean);
+  }
+
+  /**
+   * Reglas: { patron, tipologia, signo ('', 'Gasto', 'Ingreso'), min, max, meses, comentario }.
+   * min/max sobre el importe en valor absoluto. meses: lista '6,12' o 'junio,diciembre'.
+   */
+  function prepareRules(rules) {
+    return (rules || []).map(function (r, i) {
+      var meses = Array.isArray(r.meses) ? r.meses : parseMeses(r.meses);
+      var min = r.min === '' || r.min == null ? null : Number(r.min);
+      var max = r.max === '' || r.max == null ? null : Number(r.max);
+      var signo = r.signo === 'Gasto' || r.signo === 'Ingreso' ? r.signo : '';
+      var p = norm(r.patron);
+      var conds = (signo ? 1 : 0) + (min != null ? 1 : 0) + (max != null ? 1 : 0) + (meses.length ? 1 : 0);
+      return {
+        idx: i, id: r.id || String(i), patron: p, tipologia: r.tipologia, comentario: r.comentario || '',
+        signo: signo, min: min, max: max, meses: meses,
+        activa: r.activa !== false && r.activa !== 'NO' && p !== '' && !!r.tipologia,
+        // Más específica = más condiciones, luego patrón más largo, luego orden en la lista.
+        score: conds * 1000 + p.length
+      };
+    }).filter(function (r) { return r.activa; });
+  }
+
+  function ruleApplies(rule, m, text) {
+    if (text.indexOf(rule.patron) < 0) return false;
+    if (rule.signo && rule.signo !== sentido(m)) return false;
+    var a = Math.abs(m.importe);
+    if (rule.min != null && a < rule.min) return false;
+    if (rule.max != null && a > rule.max) return false;
+    if (rule.meses.length && rule.meses.indexOf(Number(m.fecha.slice(5, 7))) < 0) return false;
+    return true;
+  }
+
+  /**
+   * Devuelve { rule, conflicto } — rule es la coincidencia más específica.
+   * conflicto lista otras reglas que también casan con otra tipología y empatan
+   * en especificidad (esas son las peligrosas: decide el orden de la lista).
+   */
+  function matchRule(m, prepared) {
+    var text = matchText(m);
+    var hits = [];
+    for (var i = 0; i < prepared.length; i++) if (ruleApplies(prepared[i], m, text)) hits.push(prepared[i]);
+    if (!hits.length) return { rule: null, conflicto: [] };
+    hits.sort(function (a, b) { return b.score - a.score || a.idx - b.idx; });
+    var best = hits[0];
+    var conflicto = hits.filter(function (h) {
+      return h !== best && h.tipologia !== best.tipologia && h.score === best.score;
+    });
+    return { rule: best, conflicto: conflicto };
+  }
+
+  // Palabras que no identifican al comercio.
+  var STOP = {};
+  ('FECHA DE DEL LA EL LOS LAS Y EN POR PARA CON OPERACION RECIBO RECIBOS VARIOS SL S L SA SAU SLU ' +
+    'C CL AV AVDA CALLE MADRID ESPANA ES TRF TRANSF TRANSFERENCIA FAVOR SU A COMPRA PAGO TARJETA ' +
+    'CREDITO DEBITO CRED ENVIADO RECIBIDO NUM N NO').split(' ').forEach(function (w) { STOP[w] = 1; });
+
+  function tokens(s) {
+    return norm(s).split(/[^A-Z0-9]+/).filter(function (t) {
+      return t.length >= 3 && !STOP[t] && !/^\d+$/.test(t);
+    });
+  }
+
+  /** Clave de comercio para agrupar (insights) y proponer el patrón de una regla nueva. */
+  function merchantKey(m) {
+    var c = norm(m.concepto).replace(/\s*FECHA DE OPERACION.*$/, '');
+    var generic = /^(NOMINA|NOMINA TRF|TRANSFERENCIA|TRANSF\.?|BIZUM|BIZUM ENVIADO|BIZUM RECIBIDO|RECIBO|TRASPASO|INGRESO|REINTEGRO|DEVOLUCION|ABONO|CARGO)\b/;
+    var d = norm(m.detalle);
+    if (generic.test(c) && d && !/^FECHA DE OPERACION/.test(d)) c = (c + ' ' + d).slice(0, 48);
+    return c.replace(/[#*]+/g, ' ').replace(/\s+/g, ' ').trim();
+  }
+
+  /** Patrón sugerido para una regla nueva a partir de un movimiento. */
+  function suggestPattern(m) {
+    var k = merchantKey(m);
+    // quitar sufijos de sucursal típicos ("MERCADONA C/ ADEL" -> "MERCADONA")
+    var t = k.split(' ');
+    if (t.length > 1 && /^(C\/|C\.|CL|AV|AVDA|CTRA|PZA|MAD|S\.?L\.?|S\.?A\.?)/.test(t[1])) return t[0];
+    return k.length > 24 ? t.slice(0, 2).join(' ') : k;
+  }
+
+  // Pistas genéricas para comercios nunca vistos. Solo se usan si la tipología existe.
+  var HINTS = [
+    [/HOTEL|PARADOR|APARTAMENTO|HOSTAL|AIRBNB|BOOKING|RENFE|SNCF|IBERIA|VUELING|RYANAIR|AIR EUROPA|BILLETE|TREN /, ['Viaje', 'Viaje Verano', 'Viaje Ocio']],
+    [/BEACH CLUB|CHIRINGUITO|PUY DU FOU|TIQETS|PARQUE|MUSEO|ENTRADAS|CINE|TEATRO|ZOO|AQUOPOLIS|WARNER/, ['Ocio Familia', 'Viaje Ocio']],
+    [/RESTAUR|BAR |CAFE|CAFETERIA|CHURR|PIZZ|BURGER|TABERNA|CERVECER|SUSHI|HELAD/, ['Ocio Familia', 'Gastos Adicionales']],
+    [/FARMACIA|FCIA|PARAFARM|OPTICA|DENTAL|CLINICA/, ['Farmacia', 'Gastos Adicionales']],
+    [/MERCADONA|LIDL|ALDI|CARREFOUR|AHORRAMAS|ALCAMPO|EROSKI|SUPERM|HIPERCOR|CONSUM|DIA /, ['Supermercado']],
+    [/FRUTER|VERDUR|PESCAD|CARNIC|POLLER|MERCADO|HUERTA/, ['Mercado']],
+    [/PANAD|HORNO|PASTEL|OBRADOR|BOLLER/, ['Panaderia']],
+    [/ZAPAT|SHOES|KIABI|VERTBAUDET|OKAIDI|MAYORAL|BEBEPOLIS|PRENATAL|JUGUET|TOYS/, ['Compra Ropa Peques', 'Regalos peques', 'Gastos Adicionales']],
+    [/OYSHO|ZARA|LEFTIES|PRIMARK|MANGO|BERSHKA|PULL|STRADIVARIUS|CORTEFIEL|SFERA|H&M|DECATHLON/, ['Gastos Adicionales']],
+    [/LIBRO|LIBRER|BOOKS|PAPELER|FNAC|ESTANCO|PELUQ|TINTORER|BAZAR|VERDECORA|LEROY|IKEA/, ['Gastos Adicionales']],
+    [/AMAZON|AMZN/, ['Compras Amazon', 'Gastos Adicionales']],
+    [/MULTA|ITV|PARKING|APARCAM|GASOLIN|CEPSA|GALP|SHELL|TALLER/, ['Coche Volvo', 'Coche Polo']],
+    [/NOMINA/, ['Salario*', 'Nomina*']],
+    [/ASIGNACION|TRASPASO/, ['Asignacion*', 'Traspaso*', 'Ahorro*']]
+  ];
+
+  /** Resuelve el destino de una pista: nombre exacto o prefijo con '*'. */
+  function hintTarget(name, validas, okTipo) {
+    if (name.slice(-1) !== '*') return okTipo(name) ? name : null;
+    var pre = norm(name.slice(0, -1));
+    for (var t in validas) if (norm(t).indexOf(pre) === 0 && okTipo(t)) return t;
+    return null;
+  }
+
+  /**
+   * Modelo de propuesta: aprende de los movimientos ya clasificados (por regla o a mano).
+   * Totalmente local: nada sale de Google.
+   */
+  function buildSuggester(movs) {
+    var byMerchant = {}, byToken = {}, docs = 0, df = {};
+    movs.forEach(function (m) {
+      if (!m.tipologia || m.estado === 'pendiente' || m.estado === 'propuesta') return;
+      var k = merchantKey(m) + '|' + sentido(m);
+      (byMerchant[k] = byMerchant[k] || {})[m.tipologia] = (byMerchant[k][m.tipologia] || 0) + 1;
+      var seen = {};
+      tokens(m.concepto + ' ' + m.detalle).forEach(function (t) {
+        var key = t + '|' + sentido(m);
+        (byToken[key] = byToken[key] || {})[m.tipologia] = (byToken[key][m.tipologia] || 0) + 1;
+        if (!seen[t]) { df[t] = (df[t] || 0) + 1; seen[t] = 1; }
+      });
+      docs++;
+    });
+    return { byMerchant: byMerchant, byToken: byToken, df: df, docs: docs };
+  }
+
+  function argmax(counts) {
+    var best = null, bv = -1, total = 0;
+    for (var k in counts) { total += counts[k]; if (counts[k] > bv) { bv = counts[k]; best = k; } }
+    return { key: best, share: total ? bv / total : 0, total: total };
+  }
+
+  /**
+   * Propone tipología para un movimiento sin regla.
+   * validas: mapa tipologia -> {tipo}. Devuelve {tipologia, confianza (0–1), motivo} o null.
+   */
+  function suggest(m, model, validas) {
+    var s = sentido(m);
+    var okTipo = function (t) {
+      var p = validas && validas[t];
+      if (!p) return false;
+      return p.tipo === 'Traspaso' || p.tipo === s; // un ingreso no va a una partida de gasto
+    };
+    // 1) mismo comercio ya visto
+    var mk = model.byMerchant[merchantKey(m) + '|' + s];
+    if (mk) {
+      var am = argmax(mk);
+      if (okTipo(am.key)) return { tipologia: am.key, confianza: Math.min(0.97, 0.6 + 0.37 * am.share), motivo: 'Mismo comercio clasificado antes (' + am.total + '×)' };
+    }
+    // 2) votación por palabras, ponderada por rareza (idf). La confianza baja si solo
+    //    reconoce parte del concepto ("CASA DEL LIBRO" no es "CASADEMUNT") o si hay pocos ejemplos.
+    var scores = {}, support = {}, matched = 0, totalIdf = 0;
+    var maxIdf = Math.log(1 + Math.max(1, model.docs));
+    var toks = tokens(m.concepto + ' ' + m.detalle);
+    var uniq = {};
+    toks.forEach(function (t) { uniq[t] = 1; });
+    Object.keys(uniq).forEach(function (t) {
+      var c = model.byToken[t + '|' + s];
+      var idf = c ? Math.log(1 + model.docs / (model.df[t] || 1)) : maxIdf;
+      totalIdf += idf;
+      if (!c) return;
+      matched += idf;
+      var tot = 0; for (var k in c) tot += c[k];
+      for (var k2 in c) {
+        scores[k2] = (scores[k2] || 0) + idf * c[k2] / tot;
+        support[k2] = (support[k2] || 0) + c[k2];
+      }
+    });
+    var bestT = null, bestS = 0, second = 0;
+    for (var t in scores) {
+      if (!okTipo(t)) continue;
+      if (scores[t] > bestS) { second = bestS; bestS = scores[t]; bestT = t; } else if (scores[t] > second) second = scores[t];
+    }
+    if (bestT && totalIdf > 0) {
+      var coverage = matched / totalIdf;
+      var purity = bestS / matched;
+      var margin = (bestS - second) / bestS;
+      var conf = coverage * purity * margin * Math.min(1, support[bestT] / 3);
+      if (conf >= 0.3) return { tipologia: bestT, confianza: Math.min(0.9, conf), motivo: 'Palabras parecidas a movimientos de esa partida' };
+    }
+    // 3) pistas genéricas
+    var text = matchText(m);
+    for (var i = 0; i < HINTS.length; i++) {
+      if (HINTS[i][0].test(text)) {
+        for (var j = 0; j < HINTS[i][1].length; j++) {
+          var tgt = hintTarget(HINTS[i][1][j], validas, okTipo);
+          if (tgt) return { tipologia: tgt, confianza: 0.4, motivo: 'Tipo de comercio reconocido' };
+        }
+      }
+    }
+    return null;
+  }
+
+  var UMBRAL_PROPUESTA = 0.6; // por encima, la propuesta cuenta en los totales hasta que la revises
+
+  /**
+   * Clasifica una lista de movimientos. Respeta los manuales.
+   * Devuelve la lista con tipologia/estado/regla/sugerencia actualizados + estadísticas.
+   */
+  function classifyAll(movs, rules, partidas) {
+    var prepared = prepareRules(rules);
+    var validas = {};
+    (partidas || []).forEach(function (p) { validas[p.tipologia] = p; });
+    var stats = { regla: 0, manual: 0, propuesta: 0, pendiente: 0, conflictos: 0 };
+    var out = detectManualEdits(movs).map(function (m0) {
+      var m = Object.assign({}, m0);
+      if (m.estado === 'manual' && m.tipologia) { m.asignada = m.tipologia; stats.manual++; return m; }
+      var r = matchRule(m, prepared);
+      m.conflicto = r.conflicto.map(function (c) { return c.patron + ' → ' + c.tipologia; }).join('; ');
+      if (m.conflicto) stats.conflictos++;
+      if (r.rule) {
+        m.tipologia = r.rule.tipologia; m.estado = 'regla'; m.regla = r.rule.patron;
+        m.sugerencia = ''; m.confianza = '';
+        stats.regla++;
+      } else {
+        m.tipologia = ''; m.estado = 'pendiente'; m.regla = ''; m.sugerencia = ''; m.confianza = '';
+      }
+      return m;
+    });
+    // segunda pasada: propuestas aprendidas de lo ya clasificado (incluye lo recién clasificado por regla)
+    var model = buildSuggester(out);
+    out.forEach(function (m) {
+      if (m.estado !== 'pendiente') return;
+      var s = suggest(m, model, validas);
+      if (s) {
+        m.sugerencia = s.tipologia; m.confianza = round2(s.confianza); m.motivo = s.motivo;
+        if (s.confianza >= UMBRAL_PROPUESTA) { m.tipologia = s.tipologia; m.estado = 'propuesta'; stats.propuesta++; return; }
+      }
+      stats.pendiente++;
+    });
+    out.forEach(function (m) { m.asignada = m.tipologia || ''; });
+    return { movimientos: out, stats: stats };
+  }
+
+  /**
+   * Si alguien cambió la partida directamente en la hoja (columna CLASIFICACION),
+   * ya no coincide con la que asignó la app (columna oculta "asignada"): se trata como manual.
+   */
+  function detectManualEdits(movs) {
+    return movs.map(function (m) {
+      if (m.estado === 'manual' || m.asignada === undefined) return m;
+      var t = m.tipologia || '', a = m.asignada || '';
+      if (t && t !== a) return Object.assign({}, m, { estado: 'manual' });
+      return m;
+    });
+  }
+
+  // --------------------------------------------------------------- agregación
+
+  function partidaMap(partidas) {
+    var map = {};
+    (partidas || []).forEach(function (p) { map[p.tipologia] = p; });
+    return map;
+  }
+
+  /**
+   * Importe en "sentido de la partida": un gasto cuenta positivo en una partida de gasto,
+   * una devolución lo resta. Igual para ingresos. Traspasos: salida positiva.
+   */
+  function signedForPartida(m, p) {
+    if (!p) return m.importe < 0 ? -m.importe : m.importe;
+    return p.tipo === 'Ingreso' ? m.importe : -m.importe;
+  }
+
+  function lineOf(m, pm) {
+    if (m.tipologia && pm[m.tipologia]) return m.tipologia;
+    return m.importe < 0 ? SIN_GASTO : SIN_INGRESO;
+  }
+
+  /**
+   * Tabla real: { [tipologia]: [12 importes] } para un año.
+   */
+  function realByLine(movs, partidas, year) {
+    var pm = partidaMap(partidas), out = {};
+    movs.forEach(function (m) {
+      if (Number(m.fecha.slice(0, 4)) !== Number(year)) return;
+      var line = lineOf(m, pm);
+      var mi = Number(m.fecha.slice(5, 7)) - 1;
+      (out[line] = out[line] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])[mi] += signedForPartida(m, pm[line]);
+    });
+    for (var k in out) out[k] = out[k].map(round2);
+    return out;
+  }
+
+  /** Presupuesto: filas {anio, mes, tipologia, importe} -> { [tipologia]: [12] }. */
+  function budgetByLine(budget, year) {
+    var out = {};
+    (budget || []).forEach(function (b) {
+      if (Number(b.anio) !== Number(year)) return;
+      var mi = Number(b.mes) - 1;
+      if (mi < 0 || mi > 11) return;
+      (out[b.tipologia] = out[b.tipologia] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])[mi] += Number(b.importe) || 0;
+    });
+    for (var k in out) out[k] = out[k].map(round2);
+    return out;
+  }
+
+  /** Último mes (1–12) con movimientos en el año; 0 si no hay. */
+  function lastMonthWithData(movs, year) {
+    var last = 0;
+    movs.forEach(function (m) {
+      if (Number(m.fecha.slice(0, 4)) === Number(year)) last = Math.max(last, Number(m.fecha.slice(5, 7)));
+    });
+    return last;
+  }
+
+  function sum(a, from, to) { var s = 0; for (var i = from; i <= to; i++) s += a[i] || 0; return s; }
+
+  /**
+   * Semáforo. Para gasto, pasarse es malo; para ingreso, quedarse corto es malo.
+   * Devuelve 'ok' | 'aviso' | 'alerta' | 'sin-ppto'.
+   */
+  function status(tipo, real, ppto, umbrales) {
+    var u = umbrales || { ambar: 0.15, rojo: 0.3, minimo: 50 };
+    var desv = real - ppto;
+    var malo = tipo === 'Ingreso' ? -desv : desv;
+    if (Math.abs(desv) < (u.minimo || 0)) return 'ok';
+    if (!ppto) return real ? 'sin-ppto' : 'ok';
+    var pct = malo / Math.abs(ppto);
+    if (pct >= u.rojo) return 'alerta';
+    if (pct >= u.ambar) return 'aviso';
+    return 'ok';
+  }
+
+  /**
+   * Resumen del año hasta el mes `hasta` (incluido).
+   * Devuelve filas por tipología y por bloque, totales mensuales y acumulados.
+   */
+  function summarize(opts) {
+    var year = opts.year, partidas = opts.partidas || [], movs = opts.movimientos || [];
+    var hasta = opts.hasta || lastMonthWithData(movs, year) || 12;
+    var pm = partidaMap(partidas);
+    var real = realByLine(movs, partidas, year);
+    var ppto = budgetByLine(opts.presupuesto, year);
+    var lines = {};
+    partidas.forEach(function (p) { lines[p.tipologia] = true; });
+    Object.keys(real).forEach(function (k) { lines[k] = true; });
+    Object.keys(ppto).forEach(function (k) { lines[k] = true; });
+    var Z = function () { return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; };
+    var filas = Object.keys(lines).map(function (t) {
+      var p = pm[t] || { tipologia: t, bloque: t === SIN_GASTO || t === SIN_INGRESO ? 'SIN CLASIFICAR' : 'SIN PARTIDA', tipo: t === SIN_INGRESO ? 'Ingreso' : 'Gasto' };
+      var r = real[t] || Z(), b = ppto[t] || Z();
+      var rY = round2(sum(r, 0, hasta - 1)), bY = round2(sum(b, 0, hasta - 1));
+      return {
+        tipologia: t, bloque: p.bloque, tipo: p.tipo,
+        real: r, ppto: b, realYTD: rY, pptoYTD: bY, desvYTD: round2(rY - bY),
+        pptoAnual: round2(sum(b, 0, 11)),
+        estado: status(p.tipo, rY, bY, opts.umbrales)
+      };
+    }).filter(function (f) { return f.realYTD || f.pptoAnual || sum(f.real, 0, 11); });
+
+    var bloques = {};
+    filas.forEach(function (f) {
+      var key = f.tipo + '|' + f.bloque;
+      var b = bloques[key] = bloques[key] || { bloque: f.bloque, tipo: f.tipo, real: Z(), ppto: Z(), lineas: [] };
+      for (var i = 0; i < 12; i++) { b.real[i] += f.real[i]; b.ppto[i] += f.ppto[i]; }
+      b.lineas.push(f.tipologia);
+    });
+    var listaBloques = Object.keys(bloques).map(function (k) {
+      var b = bloques[k];
+      b.real = b.real.map(round2); b.ppto = b.ppto.map(round2);
+      b.realYTD = round2(sum(b.real, 0, hasta - 1)); b.pptoYTD = round2(sum(b.ppto, 0, hasta - 1));
+      b.desvYTD = round2(b.realYTD - b.pptoYTD);
+      b.estado = status(b.tipo, b.realYTD, b.pptoYTD, opts.umbrales);
+      return b;
+    });
+
+    var tot = {};
+    TIPOS.forEach(function (tp) { tot[tp] = { real: Z(), ppto: Z() }; });
+    filas.forEach(function (f) {
+      var T = tot[f.tipo] || tot.Gasto;
+      for (var i = 0; i < 12; i++) { T.real[i] += f.real[i]; T.ppto[i] += f.ppto[i]; }
+    });
+    var neto = { real: Z(), ppto: Z() };
+    for (var i = 0; i < 12; i++) {
+      neto.real[i] = round2(tot.Ingreso.real[i] - tot.Gasto.real[i] - tot.Traspaso.real[i]);
+      neto.ppto[i] = round2(tot.Ingreso.ppto[i] - tot.Gasto.ppto[i] - tot.Traspaso.ppto[i]);
+    }
+    TIPOS.forEach(function (tp) { tot[tp].real = tot[tp].real.map(round2); tot[tp].ppto = tot[tp].ppto.map(round2); });
+
+    var clasif = { total: 0, regla: 0, manual: 0, propuesta: 0, pendiente: 0 };
+    movs.forEach(function (m) {
+      if (Number(m.fecha.slice(0, 4)) !== Number(year)) return;
+      clasif.total++; clasif[m.estado || 'pendiente'] = (clasif[m.estado || 'pendiente'] || 0) + 1;
+    });
+
+    return { year: year, hasta: hasta, filas: filas, bloques: listaBloques, totales: tot, neto: neto, clasificacion: clasif };
+  }
+
+  // ---------------------------------------------------------------- previsión
+
+  function clamp(x, a, b) { return Math.max(a, Math.min(b, x)); }
+
+  /**
+   * Extrapola cada partida hasta diciembre a partir de lo ya ocurrido.
+   * Métodos (por partida, el primero que aplique):
+   *  - 'estacional': hay ≥6 meses del año anterior → mes del año pasado × (ritmo de este año / ritmo del pasado).
+   *  - 'tendencia' : la partida se mueve casi todos los meses → presupuesto restante × (real / presupuesto de los
+   *                  últimos 3 meses); si no hay presupuesto, la mediana de los últimos 3 meses.
+   *  - 'presupuesto': gasto esporádico → lo que queda presupuestado.
+   * Las proporciones se acotan entre 0,5× y 2× para que un mes raro no dispare la previsión.
+   */
+  function forecast(opts) {
+    var s = summarize(opts);
+    var hasta = s.hasta;
+    var prev = realByLine(opts.movimientos || [], opts.partidas || [], Number(opts.year) - 1);
+    var Z = function () { return [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]; };
+    var filas = s.filas.map(function (f) {
+      var real = f.real, ppto = f.ppto, ly = prev[f.tipologia];
+      var rY = sum(real, 0, hasta - 1);
+      var activos = 0;
+      for (var i = 0; i < hasta; i++) if (Math.abs(real[i]) > 0.005) activos++;
+      var lyActivos = 0;
+      if (ly) for (var j = 0; j < 12; j++) if (Math.abs(ly[j]) > 0.005) lyActivos++;
+      var lyYTD = ly ? sum(ly, 0, hasta - 1) : 0;
+      var fc = Z(), metodo, detalle = '';
+      if (f.tipologia === SIN_GASTO || f.tipologia === SIN_INGRESO) {
+        // no se proyecta: lo que hoy está sin clasificar acabará en otras partidas, que ya tienen su previsión
+        metodo = 'sin-proyeccion'; detalle = 'No se proyecta: clasifica estos movimientos para afinar la previsión';
+      } else if (ly && lyActivos >= 6 && lyYTD > 0 && rY > 0) {
+        var ratio = clamp(rY / lyYTD, 0.5, 2);
+        for (var a = hasta; a < 12; a++) fc[a] = ly[a] * ratio;
+        metodo = 'estacional';
+        detalle = 'Mismos meses de ' + (Number(opts.year) - 1) + ' × ' + (Math.round(ratio * 100) / 100).toString().replace('.', ',');
+      } else if (hasta >= 3 && activos >= Math.max(3, 0.6 * hasta)) {
+        var desde3 = Math.max(0, hasta - 3);
+        var pRest = sum(ppto, hasta, 11);
+        var ratios = [];
+        for (var q = desde3; q < hasta; q++) if (ppto[q] > 0) ratios.push(real[q] / ppto[q]);
+        if (ratios.length >= 2 && pRest > 0) {
+          // mediana de real/presupuesto mes a mes: un cobro extra aislado no mueve la previsión
+          var k = clamp(median(ratios), 0.5, 2);
+          for (var b = hasta; b < 12; b++) fc[b] = ppto[b] * k;
+          detalle = 'Presupuesto restante × ' + (Math.round(k * 100) / 100).toString().replace('.', ',') + ' (ritmo de los últimos 3 meses)';
+        } else {
+          var med = median(real.slice(desde3, hasta));
+          for (var c = hasta; c < 12; c++) fc[c] = med;
+          detalle = 'Mediana de los últimos 3 meses (' + fmt(med) + '/mes)';
+        }
+        metodo = 'tendencia';
+      } else {
+        for (var d = hasta; d < 12; d++) fc[d] = ppto[d];
+        metodo = 'presupuesto';
+        detalle = 'Partida esporádica: se asume lo que queda presupuestado';
+      }
+      fc = fc.map(round2);
+      var cierre = round2(rY + sum(fc, hasta, 11));
+      var serie = real.map(function (v, i) { return i < hasta ? v : fc[i]; });
+      return {
+        tipologia: f.tipologia, tipo: f.tipo, bloque: f.bloque, real: real, ppto: ppto, prevision: fc, serie: serie,
+        metodo: metodo, detalle: detalle, realYTD: round2(rY), cierre: cierre, pptoAnual: f.pptoAnual,
+        desvCierre: round2(cierre - f.pptoAnual), estadoCierre: status(f.tipo, cierre, f.pptoAnual, opts.umbrales)
+      };
+    });
+    var tot = {};
+    TIPOS.forEach(function (t) { tot[t] = { serie: Z(), ppto: Z(), cierre: 0, pptoAnual: 0 }; });
+    filas.forEach(function (f) {
+      var T = tot[f.tipo] || tot.Gasto;
+      for (var i = 0; i < 12; i++) { T.serie[i] += f.serie[i]; T.ppto[i] += f.ppto[i]; }
+      T.cierre += f.cierre; T.pptoAnual += f.pptoAnual;
+    });
+    TIPOS.forEach(function (t) { tot[t].serie = tot[t].serie.map(round2); tot[t].ppto = tot[t].ppto.map(round2); tot[t].cierre = round2(tot[t].cierre); tot[t].pptoAnual = round2(tot[t].pptoAnual); });
+    var neto = { serie: Z(), ppto: Z() };
+    for (var n = 0; n < 12; n++) {
+      neto.serie[n] = round2(tot.Ingreso.serie[n] - tot.Gasto.serie[n] - tot.Traspaso.serie[n]);
+      neto.ppto[n] = round2(tot.Ingreso.ppto[n] - tot.Gasto.ppto[n] - tot.Traspaso.ppto[n]);
+    }
+    neto.cierre = round2(sum(neto.serie, 0, 11)); neto.pptoAnual = round2(sum(neto.ppto, 0, 11));
+    // partidas que más mueven el cierre respecto al presupuesto anual (impacto en el ahorro)
+    var palancas = filas.map(function (f) { return { tipologia: f.tipologia, tipo: f.tipo, desvCierre: f.desvCierre, impacto: f.tipo === 'Ingreso' ? -f.desvCierre : f.desvCierre, metodo: f.metodo }; })
+      .filter(function (p) { return Math.abs(p.desvCierre) >= 50; })
+      .sort(function (a, b) { return Math.abs(b.impacto) - Math.abs(a.impacto); });
+    return { year: s.year, hasta: hasta, filas: filas, totales: tot, neto: neto, palancas: palancas };
+  }
+
+  // ----------------------------------------------------------------- insights
+
+  function fmt(x) {
+    var v = Math.round(Math.abs(x));
+    var s = String(v).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+    return (x < 0 ? '−' : '') + s + ' €';
+  }
+  function fmtSigned(x) { return (x > 0 ? '+' : x < 0 ? '−' : '') + fmt(Math.abs(x)); }
+
+  function x0(extras) { return extras.length ? extras[0].m : {}; }
+
+  function median(a) {
+    if (!a.length) return 0;
+    var s = a.slice().sort(function (x, y) { return x - y; });
+    var h = Math.floor(s.length / 2);
+    return s.length % 2 ? s[h] : (s[h - 1] + s[h]) / 2;
+  }
+
+  /**
+   * Explica la desviación de una partida en un periodo [desde, hasta] (meses 1–12).
+   * Compara contra el presupuesto y busca: compras puntuales grandes, más frecuencia,
+   * ticket más caro (vs. el resto del año o el año anterior), comercios nuevos,
+   * y desfases de calendario (el presupuesto estaba en otro mes).
+   */
+  function explainLine(opts) {
+    var t = opts.tipologia, year = Number(opts.year), desde = opts.desde, hasta = opts.hasta;
+    var pm = partidaMap(opts.partidas);
+    var p = pm[t] || { tipo: t === SIN_INGRESO ? 'Ingreso' : 'Gasto' };
+    var inLine = function (m) { return lineOf(m, pm) === t; };
+    var mon = function (m) { return Number(m.fecha.slice(5, 7)); };
+    var yr = function (m) { return Number(m.fecha.slice(0, 4)); };
+    var all = (opts.movimientos || []).filter(inLine);
+    var cur = all.filter(function (m) { return yr(m) === year && mon(m) >= desde && mon(m) <= hasta; });
+    var val = function (m) { return signedForPartida(m, pm[t]); };
+    var real = round2(cur.reduce(function (s, m) { return s + val(m); }, 0));
+    var bl = budgetByLine(opts.presupuesto, year)[t] || [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    var ppto = round2(sum(bl, desde - 1, hasta - 1));
+    var desv = round2(real - ppto);
+    var nMeses = hasta - desde + 1;
+    var causas = [];
+
+    // referencia para frecuencia/ticket: mismo periodo del año anterior; si no hay, el resto del año en curso
+    var base = all.filter(function (m) { return yr(m) === year - 1 && mon(m) >= desde && mon(m) <= hasta; });
+    var baseLabel = 'el mismo periodo de ' + (year - 1), baseMeses = nMeses;
+    if (base.length < 3) {
+      base = all.filter(function (m) { return yr(m) === year && (mon(m) < desde || mon(m) > hasta) && mon(m) <= (opts.ultimoMes || 12); });
+      var mesesBase = {};
+      base.forEach(function (m) { mesesBase[mon(m)] = 1; });
+      baseMeses = Object.keys(mesesBase).length;
+      baseLabel = 'tu media del resto del año';
+    }
+
+    var esBolsa = t === SIN_GASTO || t === SIN_INGRESO;
+
+    // 0) partida recurrente (≈1 movimiento al mes): ¿hay meses con movimientos de más?
+    var porMes = {};
+    all.filter(function (m) { return yr(m) === year && mon(m) <= (opts.ultimoMes || hasta); })
+      .forEach(function (m) { (porMes[mon(m)] = porMes[mon(m)] || []).push(m); });
+    var mesesConDatos = Object.keys(porMes);
+    var unoAlMes = mesesConDatos.filter(function (k) { return porMes[k].length === 1; }).length;
+    // recurrente = aparece casi todos los meses (≥60% de los meses transcurridos) y casi siempre una vez
+    var recurrente = !esBolsa && mesesConDatos.length >= Math.max(3, 0.6 * (opts.ultimoMes || hasta)) &&
+      unoAlMes >= 0.6 * mesesConDatos.length;
+    if (recurrente) {
+      var extras = [];
+      for (var mm = desde; mm <= hasta; mm++) {
+        var lista = porMes[mm] || [];
+        if (lista.length > 1) {
+          var orden = lista.slice().sort(function (a, b) { return Math.abs(val(b)) - Math.abs(val(a)); });
+          extras = extras.concat(orden.slice(1).map(function (m) { return { m: m, mes: mm }; }));
+        }
+      }
+      if (extras.length) {
+        var se = extras.reduce(function (s, x) { return s + val(x.m); }, 0);
+        causas.push({
+          tipo: 'extra', peso: Math.abs(se) * 1.2,
+          texto: 'Partida mensual con movimientos de más: ' + extras.map(function (x) { return MESES[x.mes - 1] + ' tiene ' + porMes[x.mes].length + ' (' + merchantKey(x.m) + ', ' + fmt(val(x.m)) + ')'; }).join('; ') +
+            '. Si es una paga extra, un recibo duplicado o un cargo de otra partida, revisa la regla «' + (x0(extras).regla || '—') + '».',
+          movimientos: extras.map(function (x) { return x.m.id; })
+        });
+      }
+    }
+
+    // 1) cargos puntuales grandes (no en partidas recurrentes: ahí todos los cargos son "grandes")
+    var vals = cur.map(val).filter(function (v) { return v > 0; });
+    var med = median(vals);
+    var grandes = recurrente ? [] : cur.filter(function (m) {
+      var v = val(m);
+      return v > 0 && vals.length >= 1 && (v >= Math.max(3 * med, 150) || (Math.abs(desv) > 0 && v >= 0.4 * Math.abs(desv) && v >= 100));
+    }).sort(function (a, b) { return val(b) - val(a); }).slice(0, 3);
+    if (grandes.length && desv > 0) {
+      var sg = grandes.reduce(function (s, m) { return s + val(m); }, 0);
+      causas.push({
+        tipo: 'puntual', peso: sg,
+        texto: (grandes.length === 1 ? 'Un cargo puntual explica ' : grandes.length + ' cargos puntuales explican ') + fmt(sg) +
+          ': ' + grandes.map(function (m) { return merchantKey(m) + ' (' + fmt(val(m)) + ', ' + m.fecha.slice(8, 10) + '/' + m.fecha.slice(5, 7) + ')'; }).join(', ') + '.',
+        movimientos: grandes.map(function (m) { return m.id; })
+      });
+    }
+
+    // 2) frecuencia vs ticket medio (solo con base suficiente)
+    if (!esBolsa && !recurrente && base.length >= 3 && baseMeses > 0 && cur.length >= 2) {
+      var n1 = cur.length / nMeses, n0 = base.length / baseMeses;
+      var t1 = real / cur.length;
+      var t0 = base.reduce(function (s, m) { return s + val(m); }, 0) / base.length;
+      var efFrecuencia = (n1 - n0) * t0 * nMeses;
+      var efTicket = (t1 - t0) * n1 * nMeses;
+      if (Math.abs(efFrecuencia) >= 40 && Math.abs(efFrecuencia) >= Math.abs(efTicket)) {
+        var ticketParecido = Math.abs(t1 - t0) <= 0.15 * Math.abs(t0);
+        causas.push({
+          tipo: 'frecuencia', peso: Math.abs(efFrecuencia),
+          texto: (efFrecuencia > 0 ? 'Más' : 'Menos') + ' compras de lo habitual: ' + (Math.round(n1 * 10) / 10) + '/mes frente a ' +
+            (Math.round(n0 * 10) / 10) + '/mes en ' + baseLabel + ' (' + fmtSigned(efFrecuencia) + '). ' +
+            (ticketParecido ? 'El ticket medio apenas cambia (' : 'El ticket medio también cambia (') + fmt(t1) + ' vs ' + fmt(t0) + ').'
+        });
+      } else if (Math.abs(efTicket) >= 40) {
+        causas.push({
+          tipo: 'ticket', peso: Math.abs(efTicket),
+          texto: 'Ticket medio ' + (efTicket > 0 ? 'más alto' : 'más bajo') + ': ' + fmt(t1) + ' por compra frente a ' + fmt(t0) + ' en ' + baseLabel +
+            ' (' + fmtSigned(efTicket) + '), con una frecuencia similar.'
+        });
+      }
+    }
+
+    // 3) concentración por comercio y comercios nuevos
+    var porComercio = {};
+    cur.forEach(function (m) {
+      var k = merchantKey(m);
+      var c = porComercio[k] = porComercio[k] || { comercio: k, importe: 0, n: 0 };
+      c.importe += val(m); c.n++;
+    });
+    var antes = {};
+    all.forEach(function (m) { if (yr(m) < year || (yr(m) === year && mon(m) < desde)) antes[merchantKey(m)] = 1; });
+    var hayHistoria = Object.keys(antes).length > 0;
+    var comercios = Object.keys(porComercio).map(function (k) { porComercio[k].importe = round2(porComercio[k].importe); porComercio[k].nuevo = hayHistoria && !antes[k]; return porComercio[k]; })
+      .sort(function (a, b) { return b.importe - a.importe; });
+    var nuevos = comercios.filter(function (c) { return c.nuevo && c.importe > 0; });
+    var sn = nuevos.reduce(function (s, c) { return s + c.importe; }, 0);
+    if (!recurrente && desv > 0 && nuevos.length && sn >= Math.max(60, 0.25 * desv) && Object.keys(antes).length) {
+      causas.push({
+        tipo: 'nuevos', peso: sn,
+        texto: nuevos.length + ' comercio' + (nuevos.length > 1 ? 's' : '') + ' nuevo' + (nuevos.length > 1 ? 's' : '') + ' suman ' + fmt(sn) + ': ' +
+          nuevos.slice(0, 4).map(function (c) { return c.comercio + ' (' + fmt(c.importe) + ')'; }).join(', ') + (nuevos.length > 4 ? '…' : '') + '.'
+      });
+    }
+    // goteo: muchas compras pequeñas
+    var pequenas = cur.filter(function (m) { var v = val(m); return v > 0 && v < 40; });
+    var sp = pequenas.reduce(function (s, m) { return s + val(m); }, 0);
+    if (desv > 0 && pequenas.length >= 8 && sp >= 0.4 * real) {
+      causas.push({
+        tipo: 'goteo', peso: sp * 0.8,
+        texto: 'Goteo: ' + pequenas.length + ' compras de menos de 40 € suman ' + fmt(sp) + ' (' + Math.round(100 * sp / real) + '% de lo gastado en la partida).'
+      });
+    }
+
+    // 4) desfase de calendario
+    if (nMeses < 12) {
+      var anual = sum(bl, 0, 11);
+      var pptoHastaFin = sum(bl, 0, (opts.ultimoMes || hasta) - 1);
+      var realHastaFin = round2(all.filter(function (m) { return yr(m) === year && mon(m) <= (opts.ultimoMes || hasta); })
+        .reduce(function (s, m) { return s + val(m); }, 0));
+      var desvAcum = realHastaFin - pptoHastaFin;
+      if (Math.abs(desv) >= 100 && Math.abs(desvAcum) < 0.35 * Math.abs(desv)) {
+        causas.push({
+          tipo: 'calendario', peso: Math.abs(desv) - Math.abs(desvAcum),
+          texto: 'Desfase de calendario: en el acumulado del año la partida va ' + fmtSigned(desvAcum) + ', así que la desviación de este periodo es sobre todo un cambio de mes, no un gasto extra.'
+        });
+      } else if (ppto === 0 && real > 0 && anual > 0) {
+        causas.push({
+          tipo: 'calendario', peso: real * 0.5,
+          texto: 'El presupuesto de la partida (' + fmt(anual) + ' al año) estaba en otros meses.'
+        });
+      }
+    }
+    if (ppto === 0 && real !== 0 && sum(bl, 0, 11) === 0 && t !== SIN_GASTO && t !== SIN_INGRESO) {
+      causas.push({ tipo: 'sin-ppto', peso: Math.abs(real) * 0.9, texto: 'La partida no tiene presupuesto este año: todo lo gastado cuenta como desviación.' });
+    }
+    if (t === SIN_GASTO || t === SIN_INGRESO) {
+      causas.push({ tipo: 'sin-clasificar', peso: Math.abs(real), texto: cur.length + ' movimientos sin clasificar. Clasificarlos moverá esta desviación a su partida real.' });
+    }
+    if (p.tipo === 'Ingreso' && desv < 0 && real === 0 && ppto > 0) {
+      causas.push({ tipo: 'falta', peso: ppto, texto: 'No ha llegado ningún ingreso de esta partida en el periodo (presupuestados ' + fmt(ppto) + '). Si sí ha llegado, puede estar entrando por la regla de otra partida.' });
+    }
+    if (p.tipo !== 'Ingreso' && real === 0 && ppto > 0 && !esBolsa) {
+      causas.push({ tipo: 'falta', peso: ppto, texto: 'No hay ningún cargo en esta partida (presupuestados ' + fmt(ppto) + '). O no se ha gastado, o se paga por otra vía (efectivo, Bizum, otra cuenta) y acaba en otra partida: crea una regla para esos pagos.' });
+    }
+    if (!esBolsa && ppto > 0 && real > 3 * ppto && real - ppto >= 300) {
+      causas.push({ tipo: 'irreal', peso: (real - ppto) * 0.7, texto: 'El presupuesto (' + fmt(ppto) + ') está muy por debajo de lo que se gasta de forma habitual: ' + fmt(real / nMeses) + ' al mes de media. Conviene revisarlo para el año que viene.' });
+    }
+
+    // si es un desfase de calendario, "no hay cargos" es engañoso: sobra
+    if (causas.some(function (c) { return c.tipo === 'calendario'; })) causas = causas.filter(function (c) { return c.tipo !== 'falta'; });
+
+    // sin otra explicación: compara importes mes a mes contra el presupuesto
+    if (!esBolsa && !causas.length && Math.abs(desv) >= 50 && cur.length > 2) {
+      var meses = [];
+      for (var q = desde; q <= hasta; q++) {
+        var rq = (porMes[q] || []).reduce(function (s, m) { return s + val(m); }, 0);
+        if (Math.abs(rq - bl[q - 1]) >= 25) meses.push({ mes: q, d: rq - bl[q - 1], r: rq });
+      }
+      meses.sort(function (a, b) { return Math.abs(b.d) - Math.abs(a.d); });
+      if (meses.length) {
+        causas.push({
+          tipo: 'importe', peso: Math.abs(desv),
+          texto: 'Importes distintos a lo previsto en ' + meses.slice(0, 4).map(function (x) { return MESES[x.mes - 1] + ' (' + fmt(x.r) + ', ' + fmtSigned(x.d) + ')'; }).join(', ') + (meses.length > 4 ? '…' : '') + '.'
+        });
+      }
+    }
+
+    // pocos movimientos y ninguna otra explicación: decir qué importe llegó frente a lo previsto
+    if (!causas.length && !esBolsa && cur.length >= 1 && cur.length <= 2 && Math.abs(desv) >= 50) {
+      causas.push({
+        tipo: 'importe', peso: Math.abs(desv),
+        texto: (cur.length === 1 ? 'Un único ' : 'Dos ') + (p.tipo === 'Ingreso' ? 'cobro' : 'cargo') + (cur.length === 1 ? '' : 's') + ': ' +
+          cur.map(function (m) { return merchantKey(m) + ' ' + fmt(val(m)) + ' (' + m.fecha.slice(8, 10) + '/' + m.fecha.slice(5, 7) + ')'; }).join(', ') +
+          ', frente a ' + fmt(ppto) + ' previstos (' + fmtSigned(desv) + ').'
+      });
+    }
+
+    causas.sort(function (a, b) { return b.peso - a.peso; });
+    return {
+      tipologia: t, bloque: p.bloque, tipo: p.tipo, desde: desde, hasta: hasta,
+      real: real, ppto: ppto, desv: desv, n: cur.length,
+      causas: causas.slice(0, 4), comercios: comercios.slice(0, 8),
+      nota: opts.notas ? cur.filter(function (m) { return m.nota; }).map(function (m) { return m.nota; }) : []
+    };
+  }
+
+  /**
+   * Las desviaciones que más pesan en un periodo, ordenadas por impacto en el ahorro.
+   * impacto > 0 = te ha costado dinero (gasto de más o ingreso de menos).
+   */
+  function topDeviations(opts) {
+    var s = summarize({ year: opts.year, partidas: opts.partidas, movimientos: opts.movimientos, presupuesto: opts.presupuesto, hasta: opts.hasta, umbrales: opts.umbrales });
+    var desde = opts.desde || 1, hasta = opts.hasta || s.hasta;
+    var rows = s.filas.map(function (f) {
+      var r = round2(sum(f.real, desde - 1, hasta - 1)), b = round2(sum(f.ppto, desde - 1, hasta - 1));
+      var d = round2(r - b);
+      return { tipologia: f.tipologia, tipo: f.tipo, bloque: f.bloque, real: r, ppto: b, desv: d, impacto: f.tipo === 'Ingreso' ? -d : d };
+    }).filter(function (r) { return Math.abs(r.desv) >= (opts.minimo || 50); });
+    rows.sort(function (a, b) { return Math.abs(b.impacto) - Math.abs(a.impacto); });
+    var limit = opts.limit || 8;
+    return rows.slice(0, limit).map(function (r) {
+      var e = explainLine({ tipologia: r.tipologia, year: opts.year, desde: desde, hasta: hasta, ultimoMes: s.hasta, partidas: opts.partidas, movimientos: opts.movimientos, presupuesto: opts.presupuesto, notas: true });
+      e.impacto = r.impacto;
+      return e;
+    });
+  }
+
+  // ---------------------------------------------------------- importar Excel
+
+  /**
+   * Convierte las hojas del Excel actual (BUDGET_HOME.xlsx) en datos de la app.
+   * grids: { Maestro_Tipologias, Reglas_Categorizacion, FC } como rejillas de valores.
+   */
+  function importFromBudgetWorkbook(grids, year) {
+    var partidas = [], seen = {};
+    var addPartida = function (t, bloque, tipo) {
+      t = String(t || '').trim();
+      if (!t || seen[norm(t)] || /^SIN CLASIFICA/.test(norm(t))) return;
+      seen[norm(t)] = t;
+      tipo = /ingreso/i.test(tipo) ? 'Ingreso' : /traspaso/i.test(tipo) ? 'Traspaso' : 'Gasto';
+      partidas.push({ tipologia: t, bloque: String(bloque || '').trim().toUpperCase() || 'OTROS', tipo: tipo });
+    };
+    var canon = function (t) { t = String(t || '').trim(); return seen[norm(t)] || t; };
+
+    var mt = grids.Maestro_Tipologias || [];
+    for (var i = 0; i < mt.length; i++) {
+      var r = mt[i] || [];
+      if (norm(r[0]) === 'TIPOLOGIA') continue;
+      if (/CONTROL DE INTEGRIDAD/.test(norm(r[2]))) break;
+      if (!r[0] || String(r[0]).charAt(0) === '=' || /^MAESTRO/.test(norm(r[0]))) continue;
+      if (/PENDIENTE/.test(norm(r[3])) || norm(r[1]) === 'SIN CLASIFICAR') continue;
+      addPartida(r[0], r[1], r[2]);
+    }
+    var fc = grids.FC || [], presupuesto = [];
+    for (var j = 1; j < fc.length; j++) {
+      var f = fc[j] || [];
+      var mes = monthIndex(f[0]);
+      var t = String(f[4] || '').trim();
+      if (!mes || !t || /^SIN CLASIFICA/.test(norm(t))) continue;
+      addPartida(t, f[5], f[1]);
+      var imp = parseAmount(f[3]);
+      if (isFinite(imp) && imp !== 0) presupuesto.push({ anio: Number(year), mes: mes, tipologia: canon(t), importe: round2(Math.abs(imp)), comentario: String(f[6] || '').trim() });
+    }
+    var rg = grids.Reglas_Categorizacion || [], reglas = [];
+    for (var k = 1; k < rg.length; k++) {
+      var x = rg[k] || [];
+      if (!x[0] || !x[1]) continue;
+      addPartida(x[1], x[2], /INGRESOS/.test(norm(x[2])) ? 'Ingreso' : /TRASPASOS/.test(norm(x[2])) ? 'Traspaso' : 'Gasto');
+      reglas.push({ patron: String(x[0]).trim(), tipologia: canon(x[1]), signo: '', min: '', max: '', meses: '', comentario: x[3] ? String(x[3]).trim() : '', origen: 'excel' });
+    }
+    // agrupar presupuesto repetido (misma partida y mes en varias filas)
+    var agg = {};
+    presupuesto.forEach(function (b) {
+      var key = b.mes + '|' + b.tipologia;
+      if (agg[key]) { agg[key].importe = round2(agg[key].importe + b.importe); if (b.comentario && agg[key].comentario.indexOf(b.comentario) < 0) agg[key].comentario += (agg[key].comentario ? ' · ' : '') + b.comentario; }
+      else agg[key] = b;
+    });
+    return { partidas: partidas, presupuesto: Object.keys(agg).map(function (k) { return agg[k]; }), reglas: reglas };
+  }
+
+  return {
+    MESES: MESES, MESES_CORTO: MESES_CORTO, TIPOS: TIPOS, SIN_GASTO: SIN_GASTO, SIN_INGRESO: SIN_INGRESO,
+    UMBRAL_PROPUESTA: UMBRAL_PROPUESTA,
+    norm: norm, round2: round2, ymd: ymd, toDate: toDate, parseAmount: parseAmount, hash: hash, monthIndex: monthIndex,
+    parseStatement: parseStatement, movementId: movementId, chronoSort: chronoSort, checkBalance: checkBalance,
+    prepareRules: prepareRules, matchRule: matchRule, merchantKey: merchantKey, suggestPattern: suggestPattern,
+    tokens: tokens, buildSuggester: buildSuggester, suggest: suggest, classifyAll: classifyAll,
+    realByLine: realByLine, budgetByLine: budgetByLine, lastMonthWithData: lastMonthWithData, status: status,
+    summarize: summarize, forecast: forecast, detectManualEdits: detectManualEdits,
+    explainLine: explainLine, topDeviations: topDeviations,
+    importFromBudgetWorkbook: importFromBudgetWorkbook, fmt: fmt, fmtSigned: fmtSigned
+  };
+})();
+
+if (typeof module !== 'undefined' && module.exports) module.exports = FB;
+
+</script>
+
+  <script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------ estado + API
+  var S = {
+    data: null, year: null, tab: 'seguimiento',
+    seg: { modo: 'acum', hasta: null, verTodas: false },
+    mov: { filtro: 'pendientes', mes: 0, q: '', partida: '' },
+    pres: { year: null, draft: null }
+  };
+
+  /** Llama a una función del servidor y devuelve una promesa. */
+  function api(fn) {
+    var args = Array.prototype.slice.call(arguments, 1);
+    return new Promise(function (resolve, reject) {
+      if (window.__MOCK_API__) return window.__MOCK_API__(fn, args).then(resolve, reject);
+      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function (e) { reject(e && e.message ? e : new Error(String(e))); });
+      r[fn].apply(r, args);
+    });
+  }
+
+  // ------------------------------------------------------------ utilidades
+  var $ = function (s, el) { return (el || document).querySelector(s); };
+  var $$ = function (s, el) { return Array.prototype.slice.call((el || document).querySelectorAll(s)); };
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
+  var nf0 = new Intl.NumberFormat('es-ES', { maximumFractionDigits: 0 });
+  var nf2 = new Intl.NumberFormat('es-ES', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  function eur(x, dec) { return (dec ? nf2 : nf0).format(x || 0) + ' €'; }
+  function eurS(x) { return (x > 0 ? '+' : x < 0 ? '−' : '') + eur(Math.abs(x)); }
+  function kfmt(x) { var a = Math.abs(x); return (x < 0 ? '−' : '') + (a >= 1000 ? (Math.round(a / 100) / 10).toString().replace('.', ',') + 'k' : nf0.format(a)); }
+  var ESTADO_TXT = { ok: 'En línea', aviso: 'Vigilar', alerta: 'Desviado', 'sin-ppto': 'Sin presupuesto' };
+  function stChip(estado) { return '<span class="st ' + esc(estado) + '">' + esc(ESTADO_TXT[estado] || estado) + '</span>'; }
+  var ESTADO_MOV = { regla: 'Regla', manual: 'Manual', propuesta: 'Propuesta', pendiente: 'Sin clasificar' };
+  function umbrales() {
+    var c = S.data.config;
+    return { ambar: Number(c.umbralAmbar) || 0.15, rojo: Number(c.umbralRojo) || 0.3, minimo: Number(c.minimoDesviacion) || 50 };
+  }
+  function toast(msg, ms) {
+    var t = $('#toast'); t.textContent = msg; t.style.display = 'block';
+    clearTimeout(toast._t); toast._t = setTimeout(function () { t.style.display = 'none'; }, ms || 3200);
+  }
+  function busy(on) { document.body.classList.toggle('loading', !!on); }
+  function fail(e) { busy(false); toast('Error: ' + (e && e.message || e), 6000); console.error(e); }
+  function mesLabel(i) { return FB.MESES[i - 1]; }
+
+  function years() {
+    var ys = {};
+    ys[Number(S.data.config.anioActivo) || new Date().getFullYear()] = 1;
+    S.data.movimientos.forEach(function (m) { ys[Number(m.fecha.slice(0, 4))] = 1; });
+    S.data.presupuesto.forEach(function (b) { ys[Number(b.anio)] = 1; });
+    return Object.keys(ys).map(Number).sort();
+  }
+  function lastMonth() { return FB.lastMonthWithData(S.data.movimientos, S.year) || (S.year < new Date().getFullYear() ? 12 : new Date().getMonth() + 1); }
+  function summary(hasta) {
+    return FB.summarize({ year: S.year, partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, hasta: hasta, umbrales: umbrales() });
+  }
+  function partidaByName() { var m = {}; S.data.partidas.forEach(function (p) { m[p.tipologia] = p; }); return m; }
+  function pendingCount() {
+    var y = String(S.year);
+    return S.data.movimientos.filter(function (m) { return m.fecha.slice(0, 4) === y && (m.estado === 'pendiente' || m.estado === 'propuesta'); }).length;
+  }
+
+  // ------------------------------------------------------------ tooltip
+  var tip = null;
+  function showTip(ev, html) {
+    tip = tip || $('#tip');
+    tip.innerHTML = html; tip.style.display = 'block';
+    var x = ev.clientX, y = ev.clientY, w = tip.offsetWidth, h = tip.offsetHeight;
+    var left = Math.min(window.innerWidth - w - 8, Math.max(8, x - w / 2));
+    var top = y - h - 14; if (top < 8) top = y + 18;
+    tip.style.left = left + 'px'; tip.style.top = top + 'px';
+  }
+  function hideTip() { if (tip) tip.style.display = 'none'; }
+  document.addEventListener('scroll', hideTip, true);
+  function bindTips(root) {
+    $$('[data-tip]', root).forEach(function (el) {
+      var h = function (ev) { showTip(ev, el.getAttribute('data-tip')); };
+      el.addEventListener('pointerenter', h); el.addEventListener('pointermove', h);
+      el.addEventListener('pointerleave', hideTip);
+      el.addEventListener('click', function (ev) { ev.stopPropagation(); h(ev); });
+    });
+  }
+  document.addEventListener('click', hideTip);
+
+  // ------------------------------------------------------------ gráficos SVG
+  function niceMax(v) {
+    if (v <= 0) return 1;
+    var p = Math.pow(10, Math.floor(Math.log10(v))), n = v / p;
+    return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p;
+  }
+  function tipRows(title, rows) {
+    return '<b>' + esc(title) + '</b>' + rows.map(function (r) {
+      return '<div class="r"><span>' + (r[2] ? '<i style="display:inline-block;width:8px;height:8px;border-radius:2px;margin-right:5px;background:' + r[2] + '"></i>' : '') + esc(r[0]) + '</span><span class="num">' + esc(r[1]) + '</span></div>';
+    }).join('');
+  }
+  // textura para la previsión: misma tinta que "real", rayada a 45°, para no depender solo del color
+  var HATCH = '<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+    '<rect width="6" height="6" fill="color-mix(in srgb, var(--real) 22%, var(--surface))"/><rect width="2.5" height="6" fill="var(--real)" opacity="0.75"/></pattern></defs>';
+
+  /** Barras agrupadas por mes: presupuesto, y real (o previsión rayada en los meses que faltan). */
+  function barChart(real, ppto, prev, hasta, label) {
+    var W = 640, H = 220, L = 44, R = 6, T = 10, B = 24;
+    var serie = real.map(function (v, i) { return i < hasta ? v : prev[i]; });
+    var max = niceMax(Math.max.apply(null, serie.concat(ppto)) * 1.05);
+    var cw = (W - L - R) / 12, bw = Math.min(16, (cw - 6) / 2);
+    var y = function (v) { return T + (H - T - B) * (1 - Math.max(0, v) / max); };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">' + HATCH;
+    for (var g = 0; g <= 4; g++) {
+      var gv = max * g / 4, gy = y(gv);
+      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + gy + '" y2="' + gy + '" stroke="var(--' + (g ? 'grid' : 'axis') + ')" stroke-width="1"/>';
+      s += '<text x="' + (L - 6) + '" y="' + (gy + 4) + '" text-anchor="end">' + kfmt(gv) + '</text>';
+    }
+    var bar = function (x, v, fill) {
+      if (!v || v <= 0) return '';
+      var yy = y(v), h = (H - B) - yy, r = Math.min(4, h);
+      return '<path d="M' + x + ',' + (H - B) + 'V' + (yy + r) + 'Q' + x + ',' + yy + ' ' + (x + r) + ',' + yy + 'H' + (x + bw - r) + 'Q' + (x + bw) + ',' + yy + ' ' + (x + bw) + ',' + (yy + r) + 'V' + (H - B) + 'Z" fill="' + fill + '"/>';
+    };
+    for (var i = 0; i < 12; i++) {
+      var cx = L + cw * i + cw / 2, has = i < hasta;
+      s += bar(cx - bw - 1, ppto[i], 'var(--ppto)');
+      s += bar(cx + 1, serie[i], has ? 'var(--real)' : 'url(#hatch)');
+      s += '<text x="' + cx + '" y="' + (H - 6) + '" text-anchor="middle">' + FB.MESES_CORTO[i] + '</text>';
+      var t = tipRows(mesLabel(i + 1), has
+        ? [['Real', eur(real[i]), 'var(--real)'], ['Presupuesto', eur(ppto[i]), 'var(--ppto)'], ['Desviación', eurS(real[i] - ppto[i])]]
+        : [['Previsión', eur(prev[i]), 'var(--real)'], ['Presupuesto', eur(ppto[i]), 'var(--ppto)'], ['Diferencia', eurS(prev[i] - ppto[i])]]);
+      s += '<rect x="' + (L + cw * i) + '" y="' + T + '" width="' + cw + '" height="' + (H - T - B) + '" fill="transparent" data-tip="' + esc(t) + '"/>';
+    }
+    return s + '</svg>';
+  }
+
+  /** Líneas acumuladas: presupuesto, real y previsión (discontinua) hasta diciembre. */
+  function lineChart(serie, ppto, hasta, label) {
+    var W = 640, H = 210, L = 50, R = 10, T = 12, B = 24;
+    var all = serie.concat(ppto);
+    var mx = Math.max.apply(null, all.concat([0])), mn = Math.min.apply(null, all.concat([0]));
+    var step = niceMax(((mx - mn) || 1) / 4);
+    var lo = Math.floor(mn / step) * step, hi = Math.ceil(mx / step) * step;
+    if (hi === lo) hi = lo + step;
+    var nTicks = Math.round((hi - lo) / step);
+    var x = function (i) { return L + (W - L - R) * i / 11; };
+    var y = function (v) { return T + (H - T - B) * (hi - v) / (hi - lo); };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="' + esc(label) + '">';
+    for (var g = 0; g <= nTicks; g++) {
+      var gv = lo + step * g;
+      s += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + y(gv) + '" y2="' + y(gv) + '" stroke="var(--' + (gv === 0 ? 'axis' : 'grid') + ')"/>';
+      s += '<text x="' + (L - 6) + '" y="' + (y(gv) + 4) + '" text-anchor="end">' + kfmt(gv) + '</text>';
+    }
+    var path = function (arr, from, to) { var d = ''; for (var i = from; i <= to; i++) d += (i === from ? 'M' : 'L') + x(i) + ',' + y(arr[i]); return d; };
+    s += '<path d="' + path(ppto, 0, 11) + '" fill="none" stroke="var(--ppto)" stroke-width="2"/>';
+    if (hasta < 12 && hasta > 0) s += '<path d="' + path(serie, hasta - 1, 11) + '" fill="none" stroke="var(--real)" stroke-width="2" stroke-dasharray="5 4"/>';
+    if (hasta > 0) s += '<path d="' + path(serie, 0, hasta - 1) + '" fill="none" stroke="var(--real)" stroke-width="2"/>';
+    for (var i = 0; i < 12; i++) {
+      s += '<text x="' + x(i) + '" y="' + (H - 6) + '" text-anchor="middle">' + FB.MESES_CORTO[i] + '</text>';
+      if (i < hasta) s += '<circle cx="' + x(i) + '" cy="' + y(serie[i]) + '" r="4" fill="var(--real)" stroke="var(--surface)" stroke-width="2"/>';
+    }
+    if (hasta < 12) {
+      s += '<circle cx="' + x(11) + '" cy="' + y(serie[11]) + '" r="4" fill="var(--surface)" stroke="var(--real)" stroke-width="2"/>';
+      s += '<text x="' + (x(11) - 6) + '" y="' + (y(serie[11]) - 9) + '" text-anchor="end" style="fill:var(--ink-2);font-weight:600">' + kfmt(serie[11]) + '</text>';
+    }
+    for (var k = 0; k < 12; k++) {
+      var t = tipRows('Hasta ' + mesLabel(k + 1), [[k < hasta ? 'Real' : 'Previsión', eur(serie[k]), 'var(--real)'], ['Presupuesto', eur(ppto[k]), 'var(--ppto)'], ['Diferencia', eurS(serie[k] - ppto[k])]]);
+      s += '<rect x="' + (x(k) - (W - L - R) / 22) + '" y="' + T + '" width="' + ((W - L - R) / 11) + '" height="' + (H - T - B) + '" fill="transparent" data-tip="' + esc(t) + '"/>';
+    }
+    return s + '</svg>';
+  }
+
+  /** Color divergente: azul = mejor que el presupuesto, rojo = peor, gris = en línea. */
+  function divColor(bad, ppto) {
+    if (Math.abs(bad) < umbrales().minimo) return 'var(--div-mid)';
+    var ref = Math.max(Math.abs(ppto), 100);
+    var t = Math.max(-1, Math.min(1, bad / ref / 0.5)); // ±50% satura
+    if (Math.abs(t) < 0.1) return 'var(--div-mid)';
+    var c = t > 0 ? 'var(--div-pos)' : 'var(--div-neg)';
+    return 'color-mix(in srgb, ' + c + ' ' + Math.round(20 + 70 * Math.abs(t)) + '%, var(--div-mid))';
+  }
+  function heatmap(bloques, hasta) {
+    var rows = bloques.filter(function (b) { return b.bloque !== 'SIN PARTIDA'; });
+    var h = '<div class="heat"><table><thead><tr><td></td>' + FB.MESES_CORTO.map(function (m) { return '<th style="text-align:center">' + m + '</th>'; }).join('') + '</tr></thead><tbody>';
+    rows.forEach(function (b) {
+      h += '<tr><td>' + esc(b.bloque) + (b.tipo === 'Ingreso' ? ' <span class="muted small">(ingr.)</span>' : '') + '</td>';
+      for (var i = 0; i < 12; i++) {
+        if (i >= hasta) { h += '<td style="background:var(--surface-2)"></td>'; continue; }
+        var d = b.real[i] - b.ppto[i], bad = b.tipo === 'Ingreso' ? -d : d;
+        var strong = Math.abs(bad) >= umbrales().minimo && Math.abs(bad) >= Math.max(100, Math.abs(b.ppto[i]) * 0.3);
+        var t = tipRows(b.bloque + ' · ' + mesLabel(i + 1), [['Real', eur(b.real[i])], ['Presupuesto', eur(b.ppto[i])], ['Desviación', eurS(d)], [bad > 0 ? 'Peor que lo previsto' : bad < 0 ? 'Mejor que lo previsto' : 'En línea', '']]);
+        h += '<td class="num" style="background:' + divColor(bad, b.ppto[i]) + ';' + (strong ? 'color:#fff;font-weight:600' : '') + '" data-tip="' + esc(t) + '">' + (Math.abs(d) >= umbrales().minimo ? kfmt(d) : '') + '</td>';
+      }
+      h += '</tr>';
+    });
+    return h + '</tbody></table></div>';
+  }
+
+  // ------------------------------------------------------------ pestañas
+  var ICONS = {
+    seguimiento: '<path d="M4 19V10M10 19V5M16 19v-7M22 19H2" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
+    movimientos: '<path d="M4 6h16M4 12h16M4 18h10" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"/>',
+    presupuesto: '<rect x="3" y="4" width="18" height="16" rx="2" stroke="currentColor" stroke-width="2" fill="none"/><path d="M3 9h18M9 9v11" stroke="currentColor" stroke-width="2"/>',
+    ajustes: '<circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="2" fill="none"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1 7 17M17 7l2.1-2.1" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>'
+  };
+  var TABS = [['seguimiento', 'Seguimiento'], ['movimientos', 'Movimientos'], ['presupuesto', 'Presupuesto'], ['ajustes', 'Ajustes']];
+  function renderTabs() {
+    var n = pendingCount();
+    $('#tabs').innerHTML = TABS.map(function (t) {
+      return '<button role="tab" data-tab="' + t[0] + '" aria-selected="' + (S.tab === t[0]) + '"><svg viewBox="0 0 24 24" aria-hidden="true">' + ICONS[t[0]] + '</svg>' +
+        '<span>' + t[1] + '</span>' + (t[0] === 'movimientos' && n ? '<span class="badge" aria-label="' + n + ' pendientes">' + n + '</span>' : '') + '</button>';
+    }).join('');
+    $$('#tabs button').forEach(function (b) { b.onclick = function () { go(b.getAttribute('data-tab')); }; });
+  }
+  function go(tab, opts) {
+    S.tab = tab;
+    if (opts) Object.assign(S[tab === 'movimientos' ? 'mov' : tab], opts);
+    try { history.replaceState(null, '', '#' + tab); } catch (e) { /* iframe de Apps Script */ }
+    render();
+    window.scrollTo(0, 0);
+  }
+  function render() {
+    hideTip();
+    renderTabs();
+    var v = $('#view');
+    var fn = { seguimiento: viewSeguimiento, movimientos: viewMovimientos, presupuesto: viewPresupuesto, ajustes: viewAjustes }[S.tab] || viewSeguimiento;
+    try { fn(v); } catch (e) { v.innerHTML = '<div class="banner err">' + esc(e.message) + '</div>'; console.error(e); }
+    bindTips(v);
+  }
+
+  // ------------------------------------------------------------ Seguimiento (con insights y previsión)
+  function sumR(a, from, to) { var s = 0; for (var i = from; i <= to; i++) s += a[i] || 0; return s; }
+  var METODO_TXT = { estacional: 'estacional', tendencia: 'tendencia', presupuesto: 'presupuesto', 'sin-proyeccion': 'no se proyecta' };
+
+  function insightCard(e, desde, hasta) {
+    var tipoTxt = e.tipo === 'Ingreso' ? (e.desv < 0 ? 'Ingresáis menos' : 'Ingresáis más') : (e.desv > 0 ? 'Gastáis más' : 'Gastáis menos');
+    return '<div class="card ins"><div class="row spread"><h3>' + esc(e.tipologia) + ' <span class="muted small">' + esc(e.bloque || '') + '</span></h3>' +
+      '<span class="st ' + (e.impacto > 0 ? 'alerta' : 'ok') + '">' + (e.impacto > 0 ? 'Os cuesta ' : 'Os ahorra ') + eur(Math.abs(e.impacto)) + '</span></div>' +
+      '<p class="sub num" style="margin-top:4px">' + tipoTxt + ': ' + eur(e.real) + ' frente a ' + eur(e.ppto) + ' previsto · ' + e.n + ' movimientos' +
+      (e.cierre != null ? ' · cierre previsto ' + eur(e.cierre) + ' de ' + eur(e.pptoAnual) : '') + '</p>' +
+      causesHtml(e, true) + '<div class="row" style="margin-top:10px"><button class="btn small" data-movs="' + esc(e.tipologia) + '" data-mes="' + (desde === hasta ? hasta : 0) + '">Ver movimientos</button></div></div>';
+  }
+
+  function viewSeguimiento(v) {
+    var last = lastMonth();
+    var hasta = Math.min(S.seg.hasta || last, 12);
+    var U = umbrales();
+    var base = { year: S.year, partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, umbrales: U };
+    var sm = FB.summarize(Object.assign({ hasta: hasta }, base));
+    var fc = FB.forecast(Object.assign({ hasta: hasta }, base));
+    var fcBy = {}; fc.filas.forEach(function (f) { fcBy[f.tipologia] = f; });
+    var acum = S.seg.modo === 'acum', d0 = acum ? 0 : hasta - 1, d1 = hasta - 1;
+    var T = sm.totales;
+    var g = { r: sumR(T.Gasto.real, d0, d1), p: sumR(T.Gasto.ppto, d0, d1) };
+    var ing = { r: sumR(T.Ingreso.real, d0, d1), p: sumR(T.Ingreso.ppto, d0, d1) };
+    var net = { r: sumR(sm.neto.real, d0, d1), p: sumR(sm.neto.ppto, d0, d1) };
+    var pend = pendingCount();
+    var integ = FB.checkBalance(S.data.movimientos.filter(function (m) { return m.fecha.slice(0, 4) === String(S.year); }));
+    var saldo = null, lastMov = null;
+    FB.chronoSort(S.data.movimientos).forEach(function (m) { if (m.saldo != null) { saldo = m.saldo; lastMov = m.fecha; } });
+    var periodo = acum ? 'enero – ' + mesLabel(hasta) : mesLabel(hasta);
+
+    var h = '<div class="row spread" style="margin-bottom:12px">' +
+      '<div class="seg" role="group" aria-label="Periodo"><button data-m="acum" aria-pressed="' + acum + '">Acumulado</button><button data-m="mes" aria-pressed="' + !acum + '">Solo el mes</button></div>' +
+      '<label class="row small">hasta <select id="seg-hasta">' + FB.MESES.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === hasta ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label></div>';
+
+    if (!integ.ok) {
+      h += '<div class="banner"><b>Los saldos no cuadran.</b> ' + integ.roturas.map(function (r) {
+        return 'El ' + r.fecha.split('-').reverse().join('/') + ' el banco arranca con ' + eur(r.saldoBanco, 1) + ' pero los extractos llevan ' + eur(r.saldoEsperado, 1) + ' (' + eurS(r.diferencia) + '). Falta algún movimiento entre extractos.';
+      }).join(' ') + '</div>';
+    }
+    if (pend) h += '<div class="banner" style="cursor:pointer" id="go-pend"><b>' + pend + ' movimientos por revisar.</b> Hasta que los clasifiquéis cuentan en «Sin clasificar» y no entran en la previsión. Revisar →</div>';
+
+    var kpi = function (label, real, ppto, tipo, foot) {
+      var d = real - ppto, est = FB.status(tipo, real, ppto, U);
+      return '<div class="kpi"><div class="label">' + label + '</div><div class="value num">' + eur(real) + '</div>' +
+        '<div class="foot"><span class="num">Ppto ' + eur(ppto) + ' · ' + eurS(d) + '</span>' + stChip(est) + '</div>' + (foot ? '<div class="foot" style="margin-top:4px">' + foot + '</div>' : '') + '</div>';
+    };
+    var cierreTxt = function (t) { var X = fc.totales[t]; return '<span class="num">→ cierre ' + eur(X.cierre) + ' (ppto ' + eur(X.pptoAnual) + ')</span>'; };
+    var estCierre = FB.status('Ingreso', fc.neto.cierre, fc.neto.pptoAnual, U);
+    h += '<div class="kpis">' +
+      kpi('Gasto · ' + periodo, g.r, g.p, 'Gasto', cierreTxt('Gasto')) +
+      kpi('Ingresos · ' + periodo, ing.r, ing.p, 'Ingreso', cierreTxt('Ingreso')) +
+      kpi('Ahorro · ' + periodo, net.r, net.p, 'Ingreso', saldo != null ? '<span class="num">Saldo en cuenta ' + eur(saldo) + ' (' + lastMov.split('-').reverse().slice(0, 2).join('/') + ')</span>' : '') +
+      '<div class="kpi"><div class="label">Ahorro previsto a diciembre</div><div class="value num">' + eur(fc.neto.cierre) + '</div>' +
+      '<div class="foot"><span class="num">Ppto ' + eur(fc.neto.pptoAnual) + ' · ' + eurS(fc.neto.cierre - fc.neto.pptoAnual) + '</span>' + stChip(estCierre) + '</div>' +
+      '<div class="foot" style="margin-top:4px">Extrapolado de lo ocurrido hasta ' + mesLabel(hasta) + '</div></div></div>';
+
+    // ---- qué está pasando (insights)
+    var top = FB.topDeviations(Object.assign({ desde: acum ? 1 : hasta, hasta: hasta, minimo: U.minimo, limit: 10 }, base));
+    top.forEach(function (e) { var f = fcBy[e.tipologia]; if (f) { e.cierre = f.cierre; e.pptoAnual = f.pptoAnual; } });
+    var peor = top.filter(function (e) { return e.impacto > 0; }), mejor = top.filter(function (e) { return e.impacto < 0; });
+    var dn = net.r - net.p, dc = fc.neto.cierre - fc.neto.pptoAnual;
+    var palancas = fc.palancas.filter(function (p) { return p.impacto > 0; }).slice(0, 3);
+    h += '<div class="card"><h2>' + (dn >= 0 ? 'Vais ' + eur(dn) + ' mejor' : 'Vais ' + eur(-dn) + ' peor') + ' que el presupuesto (' + periodo + ')</h2>' +
+      '<p class="sub" style="margin-bottom:0">Al ritmo actual cerraréis el año con ' + eur(fc.neto.cierre) + ' de ahorro, ' + (dc >= 0 ? eur(dc) + ' por encima' : eur(-dc) + ' por debajo') + ' de lo presupuestado.' +
+      (palancas.length ? ' Lo que más empuja en contra: ' + palancas.map(function (p) { return esc(p.tipologia) + ' (' + eurS(-p.impacto) + ')'; }).join(', ') + '.' : '') + '</p></div>';
+    var MAX = S.seg.verTodas ? 99 : 3;
+    if (peor.length) h += '<h2 class="section">En contra</h2>' + peor.slice(0, MAX).map(function (e) { return insightCard(e, acum ? 1 : hasta, hasta); }).join('');
+    if (mejor.length) h += '<h2 class="section">A favor</h2>' + mejor.slice(0, S.seg.verTodas ? 99 : 2).map(function (e) { return insightCard(e, acum ? 1 : hasta, hasta); }).join('');
+    if (peor.length > 3 || mejor.length > 2) h += '<div class="row" style="justify-content:center;margin:-4px 0 14px"><button class="btn small ghost" id="ver-todas">' + (S.seg.verTodas ? 'Ver menos' : 'Ver todas las desviaciones (' + top.length + ')') + '</button></div>';
+    if (!top.length) h += '<p class="empty">Ninguna partida se desvía más de ' + eur(U.minimo) + ' en este periodo.</p>';
+
+    // ---- gráficos
+    h += '<div class="grid two"><div class="card"><h2>Gasto mensual</h2><p class="sub">Real y, en los meses que faltan, previsión. Toca una barra para ver el detalle.</p>' +
+      '<div class="legend"><span><i style="background:var(--real)"></i>Real</span><span><i style="background:repeating-linear-gradient(135deg,var(--real) 0 2px,transparent 2px 4px)"></i>Previsión</span><span><i style="background:var(--ppto)"></i>Presupuesto</span></div>' +
+      '<div class="chart">' + barChart(T.Gasto.real, T.Gasto.ppto, fc.totales.Gasto.serie, sm.hasta, 'Gasto mensual real y previsto frente a presupuesto') + '</div></div>';
+    var cr = [], cp = [], a = 0, b = 0;
+    for (var i = 0; i < 12; i++) { a += fc.neto.serie[i]; b += fc.neto.ppto[i]; cr.push(Math.round(a)); cp.push(Math.round(b)); }
+    h += '<div class="card"><h2>Ahorro acumulado</h2><p class="sub">Entradas menos salidas (incluye traspasos). La línea discontinua es la previsión hasta diciembre.</p>' +
+      '<div class="legend"><span><i style="background:var(--real)"></i>Real</span><span><i style="background:linear-gradient(90deg,var(--real) 0 40%,transparent 40% 60%,var(--real) 60%)"></i>Previsión</span><span><i style="background:var(--ppto)"></i>Presupuesto</span></div>' +
+      '<div class="chart">' + lineChart(cr, cp, sm.hasta, 'Ahorro acumulado real, previsto y presupuestado') + '</div></div></div>';
+
+    h += '<div class="card"><h2>Desviaciones por bloque y mes</h2><p class="sub">Rojo: peor que lo previsto (gastáis más o ingresáis menos). Azul: mejor. Gris: en línea.</p>' + heatmap(sm.bloques, sm.hasta) + '</div>';
+
+    // ---- tabla con previsión de cierre
+    var order = { Ingreso: 0, Gasto: 1, Traspaso: 2 };
+    var bl = sm.bloques.slice().sort(function (x, y) { return order[x.tipo] - order[y.tipo] || Math.abs(y.desvYTD) - Math.abs(x.desvYTD); });
+    var filas = {}; sm.filas.forEach(function (f) { filas[f.tipologia] = f; });
+    h += '<div class="card"><h2>Detalle ' + (acum ? 'acumulado hasta ' + mesLabel(hasta) : 'de ' + mesLabel(hasta)) + ' y cierre previsto</h2><p class="sub">Toca un bloque para abrirlo y una partida para ver por qué se desvía y cómo se ha previsto.</p>' +
+      '<div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Real</th><th>Ppto</th><th>Desv.</th><th></th><th>Cierre prev.</th><th>Ppto año</th><th>Desv. cierre</th></tr></thead><tbody>';
+    bl.forEach(function (bq, bi) {
+      var r = sumR(bq.real, d0, d1), p = sumR(bq.ppto, d0, d1);
+      var bc = 0, bpa = 0;
+      bq.lineas.forEach(function (t) { var f = fcBy[t]; if (f) { bc += f.cierre; bpa += f.pptoAnual; } });
+      h += '<tr class="block" data-b="' + bi + '"><td>' + esc(bq.bloque) + ' <span class="muted small">' + esc(bq.tipo) + '</span></td><td class="num">' + eur(r) + '</td><td class="num">' + eur(p) + '</td><td class="num">' + eurS(r - p) + '</td><td>' + stChip(FB.status(bq.tipo, r, p, U)) + '</td>' +
+        '<td class="num">' + eur(bc) + '</td><td class="num">' + eur(bpa) + '</td><td class="num">' + eurS(bc - bpa) + '</td></tr>';
+      bq.lineas.map(function (t) { return filas[t]; }).sort(function (x, y) { return Math.abs(sumR(y.real, d0, d1) - sumR(y.ppto, d0, d1)) - Math.abs(sumR(x.real, d0, d1) - sumR(x.ppto, d0, d1)); })
+        .forEach(function (f) {
+          var fr = sumR(f.real, d0, d1), fp = sumR(f.ppto, d0, d1), F = fcBy[f.tipologia] || { cierre: 0, pptoAnual: 0, metodo: '' };
+          if (!fr && !fp && !F.cierre && !F.pptoAnual) return;
+          h += '<tr class="line" data-pb="' + bi + '" data-t="' + esc(f.tipologia) + '" hidden><td>' + esc(f.tipologia) + '</td><td class="num">' + eur(fr) + '</td><td class="num">' + eur(fp) + '</td><td class="num">' + eurS(fr - fp) + '</td><td>' + stChip(FB.status(f.tipo, fr, fp, U)) + '</td>' +
+            '<td class="num" title="' + esc(F.detalle || '') + '">' + eur(F.cierre) + ' <span class="muted small">' + esc(METODO_TXT[F.metodo] || '') + '</span></td><td class="num">' + eur(F.pptoAnual) + '</td><td class="num">' + eurS(F.cierre - F.pptoAnual) + '</td></tr>';
+        });
+    });
+    h += '</tbody></table></div></div>';
+    v.innerHTML = h;
+
+    $$('.seg button', v).forEach(function (bt) { bt.onclick = function () { S.seg.modo = bt.getAttribute('data-m'); render(); }; });
+    $('#seg-hasta').onchange = function () { S.seg.hasta = Number(this.value); render(); };
+    if ($('#go-pend')) $('#go-pend').onclick = function () { go('movimientos', { filtro: 'pendientes', mes: 0 }); };
+    if ($('#ver-todas')) $('#ver-todas').onclick = function () { S.seg.verTodas = !S.seg.verTodas; render(); };
+    $$('button[data-movs]', v).forEach(function (bt) { bt.onclick = function () { go('movimientos', { filtro: 'todos', partida: bt.getAttribute('data-movs'), mes: Number(bt.getAttribute('data-mes')), q: '' }); }; });
+    $$('tr.block', v).forEach(function (tr) {
+      tr.onclick = function () { var bi = tr.getAttribute('data-b'); $$('tr[data-pb="' + bi + '"]', v).forEach(function (x) { x.hidden = !x.hidden; }); };
+    });
+    $$('tr.line', v).forEach(function (tr) { tr.onclick = function () { openExplain(tr.getAttribute('data-t'), acum ? 1 : hasta, hasta, fcBy[tr.getAttribute('data-t')]); }; });
+  }
+
+  // ------------------------------------------------------------ explicación (sheet)
+  function openSheet(html, onMount) {
+    var sh = $('#sheet'), bg = $('#sheet-bg');
+    sh.innerHTML = html; sh.style.display = 'block'; bg.style.display = 'block';
+    bg.onclick = closeSheet;
+    $$('[data-close]', sh).forEach(function (b) { b.onclick = closeSheet; });
+    bindTips(sh);
+    if (onMount) onMount(sh);
+  }
+  function closeSheet() { $('#sheet').style.display = 'none'; $('#sheet-bg').style.display = 'none'; hideTip(); }
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeSheet(); });
+
+  function causesHtml(e, collapsible) {
+    var h = e.causas.length ? '<ul>' + e.causas.map(function (c) { return '<li>' + esc(c.texto) + '</li>'; }).join('') + '</ul>' : '<p class="muted small">Sin una causa clara: la desviación se reparte entre muchos movimientos.</p>';
+    if (e.nota && e.nota.length) h += '<p class="small"><b>Vuestras notas:</b> ' + e.nota.map(esc).join(' · ') + '</p>';
+    var com = e.comercios.filter(function (c) { return c.importe > 0; }).slice(0, 6);
+    if (com.length) {
+      var mx = com[0].importe;
+      var bars = '<div class="bars-mini" aria-label="Dónde se ha ido el dinero">' + com.map(function (c) {
+        return '<div class="b"><span title="' + esc(c.comercio) + '">' + esc(c.comercio) + '</span><span><span class="bar' + (c.nuevo ? ' new' : '') + '" style="display:block;width:' + Math.max(3, 100 * c.importe / mx) + '%"></span></span><span class="num">' + eur(c.importe) + ' · ' + c.n + '×' + (c.nuevo ? ' · nuevo' : '') + '</span></div>';
+      }).join('') + '</div>';
+      h += collapsible ? '<details style="margin-top:8px"><summary class="small">Dónde se ha ido el dinero</summary>' + bars + '</details>' : bars;
+    }
+    return h;
+  }
+  function openExplain(t, desde, hasta, F) {
+    var e = FB.explainLine({ tipologia: t, year: S.year, desde: desde, hasta: hasta, ultimoMes: lastMonth(), partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, notas: true });
+    var prevHtml = F ? '<div class="banner" style="background:var(--surface-2);border-color:var(--border)"><b>Cierre previsto: ' + eur(F.cierre) + '</b> frente a ' + eur(F.pptoAnual) + ' presupuestados (' + eurS(F.cierre - F.pptoAnual) + '). ' +
+      '<span class="small">Cómo: ' + esc(F.detalle) + '.</span></div>' : '';
+    openSheet('<div class="row spread"><h2>' + esc(t) + '</h2><button class="btn small ghost" data-close>Cerrar</button></div>' +
+      '<p class="sub">' + (desde === hasta ? mesLabel(hasta) : mesLabel(desde) + ' – ' + mesLabel(hasta)) + ' ' + S.year + ' · ' + e.n + ' movimientos</p>' +
+      '<div class="kpis" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><div class="label">Real</div><div class="value num" style="font-size:18px">' + eur(e.real) + '</div></div>' +
+      '<div class="kpi"><div class="label">Presupuesto</div><div class="value num" style="font-size:18px">' + eur(e.ppto) + '</div></div>' +
+      '<div class="kpi"><div class="label">Desviación</div><div class="value num" style="font-size:18px">' + eurS(e.desv) + '</div></div></div>' +
+      prevHtml + '<div class="ins">' + causesHtml(e) + '</div><div class="row" style="margin-top:14px"><button class="btn" id="see-movs">Ver movimientos</button></div>',
+      function (sh) { $('#see-movs', sh).onclick = function () { closeSheet(); go('movimientos', { filtro: 'todos', partida: t, mes: desde === hasta ? hasta : 0, q: '' }); }; });
+  }
+
+  // ------------------------------------------------------------ Movimientos
+  function partidaOptions(selected, sentido) {
+    var groups = {};
+    S.data.partidas.forEach(function (p) {
+      if (sentido && p.tipo !== 'Traspaso' && p.tipo !== sentido) return;
+      (groups[p.tipo + ' · ' + p.bloque] = groups[p.tipo + ' · ' + p.bloque] || []).push(p.tipologia);
+    });
+    return '<option value="">— Sin clasificar —</option>' + Object.keys(groups).sort().map(function (g) {
+      return '<optgroup label="' + esc(g) + '">' + groups[g].map(function (t) { return '<option' + (t === selected ? ' selected' : '') + '>' + esc(t) + '</option>'; }).join('') + '</optgroup>';
+    }).join('');
+  }
+  function movFilter() {
+    var y = String(S.year), f = S.mov, q = FB.norm(f.q);
+    var SIN = f.partida === FB.SIN_GASTO || f.partida === FB.SIN_INGRESO;
+    return S.data.movimientos.filter(function (m) {
+      if (m.fecha.slice(0, 4) !== y) return false;
+      if (f.mes && Number(m.fecha.slice(5, 7)) !== f.mes) return false;
+      if (f.filtro === 'pendientes' && !(m.estado === 'pendiente' || m.estado === 'propuesta')) return false;
+      if (f.filtro === 'propuestas' && m.estado !== 'propuesta') return false;
+      if (f.partida) {
+        if (SIN) { if (m.tipologia && partidaByName()[m.tipologia]) return false; if ((f.partida === FB.SIN_GASTO) !== (m.importe < 0)) return false; }
+        else if (m.tipologia !== f.partida) return false;
+      }
+      if (q && FB.norm(m.concepto + ' ' + m.detalle + ' ' + (m.nota || '')).indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  function viewMovimientos(v) {
+    var list = FB.chronoSort(movFilter()).reverse();
+    var y = String(S.year);
+    var nPend = S.data.movimientos.filter(function (m) { return m.fecha.slice(0, 4) === y && m.estado === 'pendiente'; }).length;
+    var nProp = S.data.movimientos.filter(function (m) { return m.fecha.slice(0, 4) === y && m.estado === 'propuesta'; }).length;
+    var withSug = list.filter(function (m) { return (m.estado === 'propuesta' || m.estado === 'pendiente') && (m.tipologia || m.sugerencia); });
+    var tot = list.reduce(function (s, m) { return s + m.importe; }, 0);
+    var h = '<div class="row" style="margin-bottom:10px"><div class="seg" role="group" aria-label="Filtro">' +
+      [['pendientes', 'Por revisar (' + (nPend + nProp) + ')'], ['propuestas', 'Propuestas (' + nProp + ')'], ['todos', 'Todos']].map(function (b) {
+        return '<button data-f="' + b[0] + '" aria-pressed="' + (S.mov.filtro === b[0]) + '">' + b[1] + '</button>';
+      }).join('') + '</div></div>' +
+      '<div class="row" style="margin-bottom:10px"><input type="search" id="mv-q" placeholder="Buscar concepto o nota" value="' + esc(S.mov.q) + '" style="flex:1;min-width:160px">' +
+      '<select id="mv-mes"><option value="0">Todo el año</option>' + FB.MESES.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (S.mov.mes === i + 1 ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>' +
+      '<select id="mv-part" style="max-width:220px"><option value="">Todas las partidas</option><option value="' + esc(FB.SIN_GASTO) + '"' + (S.mov.partida === FB.SIN_GASTO ? ' selected' : '') + '>' + esc(FB.SIN_GASTO) + '</option>' +
+      S.data.partidas.map(function (p) { return '<option' + (p.tipologia === S.mov.partida ? ' selected' : '') + '>' + esc(p.tipologia) + '</option>'; }).join('') + '</select></div>';
+    h += '<div class="row spread small" style="margin-bottom:6px"><span class="muted num">' + list.length + ' movimientos · ' + eurS(tot) + '</span>' +
+      (withSug.length ? '<button class="btn small primary" id="accept-all">Aceptar ' + withSug.length + ' propuesta' + (withSug.length > 1 ? 's' : '') + '</button>' : '') + '</div>';
+    if (!list.length) h += '<p class="empty">' + (S.mov.filtro === 'pendientes' ? 'Nada por revisar. Todo clasificado.' : 'No hay movimientos con estos filtros.') + '</p>';
+    var day = '';
+    list.slice(0, 400).forEach(function (m) {
+      if (m.fecha !== day) {
+        day = m.fecha;
+        var d = FB.toDate(m.fecha);
+        h += '<div class="day">' + d.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'long' }) + '</div>';
+      }
+      var det = /^fecha de operaci/i.test(m.detalle) ? '' : m.detalle;
+      var sug = m.estado === 'pendiente' && m.sugerencia ? '<span class="chip estado-pendiente">¿' + esc(m.sugerencia) + '? ' + Math.round(100 * m.confianza) + '%</span>' : '';
+      h += '<div class="mov" data-id="' + esc(m.id) + '"><div class="c">' + esc(FB.merchantKey(m)) + '</div><div class="a num">' + eurS(m.importe).replace('+', '+ ') + '</div>' +
+        (det ? '<div class="d">' + esc(det) + '</div>' : '') +
+        '<div class="t"><span class="chip estado-' + esc(m.estado) + '">' + (m.tipologia ? esc(m.tipologia) + ' · ' + esc(ESTADO_MOV[m.estado] || '') + (m.estado === 'propuesta' ? ' ' + Math.round(100 * m.confianza) + '%' : '') : 'Sin clasificar') + '</span>' + sug +
+        (m.nota ? '<span class="small muted">📝 ' + esc(m.nota) + '</span>' : '') + (m.conflicto ? '<span class="small muted" title="' + esc(m.conflicto) + '">⚠ dos reglas</span>' : '') + '</div></div>';
+    });
+    if (list.length > 400) h += '<p class="muted small">Mostrando 400 de ' + list.length + '. Filtra por mes para ver el resto.</p>';
+    v.innerHTML = h;
+    $$('.seg button', v).forEach(function (b) { b.onclick = function () { S.mov.filtro = b.getAttribute('data-f'); render(); }; });
+    var qi = $('#mv-q');
+    qi.oninput = function () { clearTimeout(qi._t); qi._t = setTimeout(function () { S.mov.q = qi.value; render(); var n = $('#mv-q'); n.focus(); n.setSelectionRange(n.value.length, n.value.length); }, 250); };
+    $('#mv-mes').onchange = function () { S.mov.mes = Number(this.value); render(); };
+    $('#mv-part').onchange = function () { S.mov.partida = this.value; if (this.value) S.mov.filtro = 'todos'; render(); };
+    $$('.mov', v).forEach(function (el) { el.onclick = function () { openEditor(el.getAttribute('data-id')); }; });
+    if ($('#accept-all')) $('#accept-all').onclick = function () {
+      busy(true);
+      api('apiAcceptSuggestions', withSug.map(function (m) { return m.id; })).then(function (r) {
+        S.data.movimientos = r.movimientos; busy(false); toast(withSug.length + ' propuestas aceptadas.'); render();
+      }, fail);
+    };
+  }
+
+  function openEditor(id) {
+    var m = S.data.movimientos.filter(function (x) { return x.id === id; })[0];
+    if (!m) return;
+    var sentido = m.importe < 0 ? 'Gasto' : 'Ingreso';
+    var current = m.tipologia || m.sugerencia || '';
+    var patron = FB.suggestPattern(m);
+    var html = '<div class="row spread"><h2>' + esc(FB.merchantKey(m)) + '</h2><button class="btn small ghost" data-close>Cerrar</button></div>' +
+      '<p class="sub num">' + m.fecha.split('-').reverse().join('/') + ' · ' + eurS(m.importe) + (m.saldo != null ? ' · saldo ' + eur(m.saldo, 1) : '') + '</p>' +
+      '<p class="small muted" style="margin:0">' + esc(m.concepto) + (m.detalle ? ' · ' + esc(m.detalle) : '') + '</p>' +
+      (m.regla ? '<p class="small">Clasificado por la regla «' + esc(m.regla) + '».</p>' : '') +
+      (m.sugerencia && m.estado !== 'regla' ? '<p class="small">Propuesta: <b>' + esc(m.sugerencia) + '</b> (' + Math.round(100 * m.confianza) + '% · ' + esc(m.motivo || '') + ')</p>' : '') +
+      (m.conflicto ? '<p class="small">⚠ También casa con: ' + esc(m.conflicto) + '</p>' : '') +
+      '<div class="stack"><label class="field">Partida<select id="ed-t">' + partidaOptions(current, sentido) + '</select></label>' +
+      '<label class="check"><input type="checkbox" id="ed-rule"' + (m.estado === 'regla' ? '' : ' checked') + '> Crear regla para los próximos</label>' +
+      '<div id="ed-rule-box" class="stack" style="margin:0"><label class="field">El concepto contiene<input type="text" id="ed-pat" value="' + esc(patron) + '" autocapitalize="characters"></label>' +
+      '<p class="small muted" id="ed-match" style="margin:0"></p>' +
+      '<details><summary class="small">Condiciones (opcional)</summary><div class="row" style="margin-top:8px">' +
+      '<label class="field">Solo si es<select id="ed-sig"><option value="">Gasto o ingreso</option><option' + (sentido === 'Gasto' ? ' selected' : '') + '>Gasto</option><option' + (sentido === 'Ingreso' ? ' selected' : '') + '>Ingreso</option></select></label>' +
+      '<label class="field">Importe mín.<input type="number" id="ed-min" inputmode="decimal" style="width:100px"></label>' +
+      '<label class="field">Importe máx.<input type="number" id="ed-max" inputmode="decimal" style="width:100px"></label>' +
+      '<label class="field">Meses (p. ej. 6,12)<input type="text" id="ed-mes" style="width:120px"></label></div>' +
+      '<p class="small muted">Útil para separar, por ejemplo, la paga extra (junio y diciembre, más de 2.500 €) de la nómina normal.</p></details></div>' +
+      '<label class="field">Nota (por qué, para los insights)<textarea id="ed-nota" placeholder="p. ej. avería del coche, regalo boda…">' + esc(m.nota || '') + '</textarea></label>' +
+      '<div class="row"><button class="btn primary" id="ed-save">Guardar</button><button class="btn ghost" data-close>Cancelar</button></div></div>';
+    openSheet(html, function (sh) {
+      var box = $('#ed-rule-box', sh), chk = $('#ed-rule', sh);
+      var upd = function () {
+        box.style.display = chk.checked ? 'grid' : 'none';
+        var p = FB.norm($('#ed-pat', sh).value);
+        if (!p) { $('#ed-match', sh).textContent = ''; return; }
+        var n = S.data.movimientos.filter(function (x) { return x.estado !== 'manual' && FB.norm(x.concepto + ' ' + x.detalle).indexOf(p) >= 0; }).length;
+        $('#ed-match', sh).textContent = 'Afecta a ' + n + ' movimiento' + (n === 1 ? '' : 's') + ' (los clasificados a mano no se tocan).';
+      };
+      chk.onchange = upd; $('#ed-pat', sh).oninput = upd; upd();
+      $('#ed-save', sh).onclick = function () {
+        var t = $('#ed-t', sh).value, nota = $('#ed-nota', sh).value;
+        var opts = { nota: nota };
+        if (chk.checked && t) opts.regla = { patron: $('#ed-pat', sh).value, signo: $('#ed-sig', sh).value, min: $('#ed-min', sh).value, max: $('#ed-max', sh).value, meses: $('#ed-mes', sh).value };
+        busy(true);
+        api('apiClassify', [id], t, opts).then(function (r) {
+          S.data.movimientos = r.movimientos; if (r.reglas) S.data.reglas = r.reglas;
+          busy(false); closeSheet(); toast(opts.regla ? 'Guardado y regla creada.' : 'Guardado.'); render();
+        }, fail);
+      };
+    });
+  }
+
+  // ------------------------------------------------------------ Presupuesto
+  function viewPresupuesto(v) {
+    var year = S.pres.year || S.year;
+    if (!S.pres.draft || S.pres.draft.year !== year) {
+      S.pres.draft = { year: year, cells: FB.budgetByLine(S.data.presupuesto, year), dirty: false };
+    }
+    var D = S.pres.draft.cells;
+    var prev = FB.realByLine(S.data.movimientos, S.data.partidas, year - 1);
+    var hasPrev = Object.keys(prev).length > 0;
+    var groups = {};
+    S.data.partidas.forEach(function (p) { (groups[p.tipo + '|' + p.bloque] = groups[p.tipo + '|' + p.bloque] || []).push(p); });
+    var order = { Ingreso: 0, Gasto: 1, Traspaso: 2 };
+    var keys = Object.keys(groups).sort(function (a, b) { return order[a.split('|')[0]] - order[b.split('|')[0]] || (a < b ? -1 : 1); });
+    var h = '<div class="row spread" style="margin-bottom:10px"><div class="row"><label class="row">Presupuesto de <select id="pr-year">' +
+      [S.year - 1, S.year, S.year + 1].map(function (y) { return '<option' + (y === year ? ' selected' : '') + '>' + y + '</option>'; }).join('') + '</select></label></div>' +
+      '<div class="row"><button class="btn small" id="pr-copy">Copiar de ' + (year - 1) + '</button>' + (hasPrev ? '<button class="btn small" id="pr-real">Proponer desde el real de ' + (year - 1) + '</button>' : '') +
+      '<button class="btn primary" id="pr-save"' + (S.pres.draft.dirty ? '' : ' disabled') + '>Guardar</button></div></div>' +
+      '<p class="small muted">Edita mes a mes, o escribe un total anual para repartirlo en 12. ' + (hasPrev ? 'La columna gris es lo que se gastó de verdad en ' + (year - 1) + '.' : '') + '</p>';
+    h += '<div class="card" style="padding:0"><div class="tbl-wrap" style="margin:0;padding:0;max-height:70vh"><table><thead><tr><th style="position:sticky;left:0;z-index:2;background:var(--surface)">Partida</th>' +
+      FB.MESES_CORTO.map(function (m) { return '<th>' + m + '</th>'; }).join('') + '<th>Total</th>' + (hasPrev ? '<th>Real ' + (year - 1) + '</th>' : '') + '</tr></thead><tbody>';
+    var Z = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
+    keys.forEach(function (k) {
+      var ps = groups[k], tipo = k.split('|')[0];
+      var bt = ps.reduce(function (s, p) { return s + (D[p.tipologia] || Z).reduce(function (a, b) { return a + b; }, 0); }, 0);
+      h += '<tr class="block"><td style="position:sticky;left:0;background:var(--surface-2)">' + esc(k.split('|')[1]) + ' <span class="muted small">' + tipo + '</span></td>' + FB.MESES_CORTO.map(function () { return '<td></td>'; }).join('') + '<td class="num">' + eur(bt) + '</td>' + (hasPrev ? '<td></td>' : '') + '</tr>';
+      ps.forEach(function (p) {
+        var row = D[p.tipologia] || Z, tot = row.reduce(function (a, b) { return a + b; }, 0);
+        var pr = (prev[p.tipologia] || Z).reduce(function (a, b) { return a + b; }, 0);
+        h += '<tr><td style="position:sticky;left:0;background:var(--surface);min-width:140px">' + esc(p.tipologia) + '</td>' +
+          row.map(function (x, i) { return '<td><input class="num" inputmode="decimal" data-t="' + esc(p.tipologia) + '" data-m="' + i + '" value="' + (x ? String(x).replace('.', ',') : '') + '"></td>'; }).join('') +
+          '<td><input class="num" inputmode="decimal" data-t="' + esc(p.tipologia) + '" data-tot="1" value="' + (tot ? Math.round(tot) : '') + '" style="font-weight:600"></td>' +
+          (hasPrev ? '<td class="num muted">' + (pr ? eur(pr) : '') + '</td>' : '') + '</tr>';
+      });
+    });
+    h += '</tbody></table></div></div>';
+    v.innerHTML = h;
+    var mark = function () { S.pres.draft.dirty = true; $('#pr-save').disabled = false; };
+    $$('input[data-m]', v).forEach(function (inp) {
+      inp.onchange = function () {
+        var t = inp.getAttribute('data-t'), i = Number(inp.getAttribute('data-m'));
+        (D[t] = D[t] || Z.slice())[i] = FB.round2(FB.parseAmount(inp.value || '0') || 0); mark();
+      };
+    });
+    $$('input[data-tot]', v).forEach(function (inp) {
+      inp.onchange = function () {
+        var t = inp.getAttribute('data-t'), tot = FB.parseAmount(inp.value || '0') || 0;
+        var each = Math.floor(tot / 12 * 100) / 100;
+        D[t] = Z.map(function () { return each; }); D[t][11] = FB.round2(tot - each * 11); mark(); render();
+      };
+    });
+    $('#pr-year').onchange = function () { if (S.pres.draft.dirty && !confirm('Hay cambios sin guardar. ¿Descartarlos?')) return; S.pres.year = Number(this.value); S.pres.draft = null; render(); };
+    $('#pr-copy').onclick = function () {
+      var src = FB.budgetByLine(S.data.presupuesto, year - 1);
+      if (!Object.keys(src).length) return toast('No hay presupuesto de ' + (year - 1) + '.');
+      S.pres.draft.cells = JSON.parse(JSON.stringify(src)); S.pres.draft.dirty = true; render();
+    };
+    if ($('#pr-real')) $('#pr-real').onclick = function () {
+      var pm = partidaByName();
+      var cells = {};
+      Object.keys(prev).forEach(function (t) { if (pm[t]) cells[t] = prev[t].map(function (x) { return Math.max(0, Math.round(x)); }); });
+      S.pres.draft.cells = cells; S.pres.draft.dirty = true; render();
+      toast('Propuesta cargada desde el real de ' + (year - 1) + '. Ajusta y guarda.');
+    };
+    $('#pr-save').onclick = function () {
+      var celdas = [];
+      Object.keys(D).forEach(function (t) { D[t].forEach(function (x, i) { if (x) celdas.push({ mes: i + 1, tipologia: t, importe: x }); }); });
+      busy(true);
+      api('apiSaveBudget', year, celdas).then(function (b) { S.data.presupuesto = b; S.pres.draft = null; busy(false); toast('Presupuesto de ' + year + ' guardado.'); render(); }, fail);
+    };
+  }
+
+  // ------------------------------------------------------------ Ajustes
+  function viewAjustes(v) {
+    var c = S.data.config;
+    var integ = FB.checkBalance(S.data.movimientos);
+    var h = '<div class="card"><h2>Extractos</h2><p class="sub">Deja los .xls del banco en la carpeta de Drive (puede tener subcarpetas por año). La app los lee, ignora los repetidos y clasifica.</p>' +
+      '<div class="stack" style="display:grid;gap:10px"><label class="field">Carpeta de extractos (enlace o ID de Drive)<input type="text" id="cf-folder" value="' + esc(c.carpetaExtractos) + '"></label>' +
+      '<div class="row"><button class="btn primary" id="cf-process">Procesar extractos ahora</button><button class="btn" id="cf-trigger">Procesar cada día automáticamente</button></div></div></div>';
+    h += '<div class="card"><h2>Integridad</h2>' + (integ.ok ? '<p class="sub">✔ La cadena de saldos cuadra en los ' + integ.revisados + ' movimientos.</p>' :
+      '<div class="banner">' + integ.roturas.map(function (r) { return '<div>' + r.fecha.split('-').reverse().join('/') + ': el banco arranca con ' + eur(r.saldoBanco, 1) + ' y los extractos acaban en ' + eur(r.saldoEsperado, 1) + ' (' + eurS(r.diferencia) + ').</div>'; }).join('') +
+        '<div class="small" style="margin-top:6px">Suele ser un extracto que se descargó antes de acabar el mes. Vuelve a descargar ese mes completo y deja el fichero en la carpeta: los repetidos se ignoran.</div></div>') +
+      '<details><summary class="small">Ficheros procesados (' + S.data.archivos.length + ')</summary><div class="small" style="margin-top:6px">' +
+      S.data.archivos.map(function (a) { return '<div>' + esc(a.carpeta) + '/' + esc(a.nombre) + ' — ' + esc(a.resultado) + ' · ' + esc(a.nuevos) + ' nuevos de ' + esc(a.movimientos) + '</div>'; }).join('') + '</div></details></div>';
+    h += '<div class="card"><h2>General</h2><div class="row" style="align-items:flex-end">' +
+      '<label class="field">Año por defecto<input type="number" id="cf-year" value="' + esc(c.anioActivo) + '" style="width:100px"></label>' +
+      '<label class="field">Umbral aviso (%)<input type="number" id="cf-amb" value="' + Math.round(100 * Number(c.umbralAmbar)) + '" style="width:90px"></label>' +
+      '<label class="field">Umbral desviado (%)<input type="number" id="cf-roj" value="' + Math.round(100 * Number(c.umbralRojo)) + '" style="width:90px"></label>' +
+      '<label class="field">Ignorar desviaciones de menos de (€)<input type="number" id="cf-min" value="' + esc(c.minimoDesviacion) + '" style="width:90px"></label></div>' +
+      '<label class="field" style="margin-top:10px">Usuarios permitidos (emails separados por comas; vacío = quien tenga la hoja compartida)<input type="text" id="cf-users" value="' + esc(c.usuarios) + '"></label>' +
+      '<div class="row" style="margin-top:10px"><button class="btn primary" id="cf-save">Guardar ajustes</button><span class="small muted">Conectado como ' + esc(S.data.usuario || '—') + '</span></div></div>';
+    h += '<div class="card"><h2>La hoja de cálculo</h2><p class="sub">Todo se guarda en una hoja de Google con las mismas pestañas que vuestro Excel (Movimientos, Reglas_Categorizacion, Maestro_Tipologias, FC) y dos que escribe la app: Resumen (real, presupuesto y previsión) e Insights. ' +
+      'Podéis editarla a mano: cambiar la partida de un movimiento, añadir un gasto en efectivo como fila nueva, tocar reglas o presupuesto. La app lo respeta.</p>' +
+      '<div class="row">' + (S.data.hojaUrl ? '<a class="btn" href="' + esc(S.data.hojaUrl) + '" target="_blank" rel="noopener">Abrir la hoja</a>' : '') + '<button class="btn" id="cf-recalc">Recalcular resumen</button></div>' +
+      '<h3 style="font-size:14px;margin:16px 0 4px">Copia en Excel (.xlsx)</h3><p class="sub">Una copia de toda la hoja en un .xlsx de Drive, para abrirla con Excel. Es solo una foto: lo que se edite en ese .xlsx no vuelve a la app. ' +
+      'Si eliges vuestro BUDGET_HOME.xlsx como destino, su contenido se sustituye por completo (Power Query y tablas dinámicas incluidas).</p>' +
+      '<div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:200px">Fichero .xlsx de destino (vacío = se crea uno junto a la hoja)<input type="text" id="cf-xlsx" value="' + esc(c.excelCopia) + '"></label>' +
+      '<label class="check small"><input type="checkbox" id="cf-xauto"' + (c.excelAuto === 'si' ? ' checked' : '') + '> Actualizar cada día</label>' +
+      '<button class="btn" id="cf-export">Exportar ahora</button></div></div>';
+    h += '<div class="card"><h2>Importar desde el Excel</h2><p class="sub">Trae partidas, reglas y presupuesto de BUDGET_HOME.xlsx (hojas Maestro_Tipologias, Reglas_Categorizacion y FC).</p>' +
+      '<div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:200px">Enlace o ID del Excel en Drive<input type="text" id="im-file"></label>' +
+      '<label class="field">Año del presupuesto<input type="number" id="im-year" value="' + S.year + '" style="width:100px"></label>' +
+      '<label class="field">Modo<select id="im-mode"><option value="reemplazar">Reemplazar</option><option value="anadir">Solo añadir lo que falte</option></select></label>' +
+      '<button class="btn" id="im-go">Importar</button></div></div>';
+    h += viewPartidasHtml() + viewReglasHtml();
+    v.innerHTML = h;
+
+    $('#cf-process').onclick = function () {
+      var folder = $('#cf-folder').value.trim();
+      busy(true);
+      var p = folder !== c.carpetaExtractos ? api('apiSaveConfig', { carpetaExtractos: folder }) : Promise.resolve(c);
+      p.then(function (cfg) { S.data.config = cfg; return api('apiProcessFolder'); }).then(function (r) {
+        var nuevos = r.archivos.reduce(function (s, a) { return s + (a.nuevos || 0); }, 0);
+        var errs = r.archivos.filter(function (a) { return /^error/.test(a.resultado); });
+        return reload().then(function () {
+          toast(r.archivos.length ? r.archivos.length + ' fichero(s) leídos, ' + nuevos + ' movimientos nuevos.' + (errs.length ? ' ' + errs.length + ' con error.' : '') : 'No hay ficheros nuevos.', 5000);
+        });
+      }).catch(fail);
+    };
+    $('#cf-recalc').onclick = function () { busy(true); api('apiReclassify').then(function (r) { S.data.movimientos = r.movimientos; busy(false); toast('Resumen e insights de la hoja actualizados.'); render(); }, fail); };
+    $('#cf-export').onclick = function () {
+      busy(true);
+      api('apiSaveConfig', { excelCopia: $('#cf-xlsx').value.trim(), excelAuto: $('#cf-xauto').checked ? 'si' : 'no' })
+        .then(function () { return api('apiExportExcel'); })
+        .then(function (r) { return reload().then(function () { toast('Copia guardada: ' + r.nombre, 5000); }); }).catch(fail);
+    };
+    $('#cf-xauto').onchange = function () { api('apiSaveConfig', { excelAuto: this.checked ? 'si' : 'no' }).then(function (cfg) { S.data.config = cfg; toast('Guardado.'); }, fail); };
+    $('#cf-trigger').onclick = function () { busy(true); api('apiInstallDailyTrigger').then(function (m) { busy(false); toast(m); }, fail); };
+    $('#cf-save').onclick = function () {
+      busy(true);
+      api('apiSaveConfig', { carpetaExtractos: $('#cf-folder').value.trim(), anioActivo: $('#cf-year').value, umbralAmbar: Number($('#cf-amb').value) / 100, umbralRojo: Number($('#cf-roj').value) / 100, minimoDesviacion: $('#cf-min').value, usuarios: $('#cf-users').value })
+        .then(function (cfg) { S.data.config = cfg; busy(false); toast('Ajustes guardados.'); render(); }, fail);
+    };
+    $('#im-go').onclick = function () {
+      var f = $('#im-file').value.trim(); if (!f) return toast('Pega el enlace del Excel.');
+      if ($('#im-mode').value === 'reemplazar' && !confirm('Se sustituirán las partidas, las reglas y el presupuesto de ' + $('#im-year').value + '. ¿Seguir?')) return;
+      busy(true);
+      api('apiImportExcel', f, Number($('#im-year').value), $('#im-mode').value).then(function (r) {
+        return reload().then(function () { toast('Importado: ' + r.partidas + ' partidas, ' + r.reglas + ' reglas, ' + r.presupuesto + ' celdas de presupuesto.', 5000); });
+      }).catch(fail);
+    };
+    bindPartidas(v); bindReglas(v);
+  }
+
+  function viewPartidasHtml() {
+    return '<div class="card"><details><summary>Partidas (' + S.data.partidas.length + ')</summary><p class="sub" style="margin-top:6px">El nombre es la clave: si lo cambias, cambia también en reglas y presupuesto a mano.</p>' +
+      '<div class="tbl-wrap"><table id="pt-tbl"><thead><tr><th>Partida</th><th style="text-align:left">Bloque</th><th style="text-align:left">Tipo</th><th></th></tr></thead><tbody>' +
+      S.data.partidas.map(function (p, i) {
+        return '<tr data-i="' + i + '"><td><input class="wide" data-k="tipologia" value="' + esc(p.tipologia) + '"></td><td><input class="wide" data-k="bloque" value="' + esc(p.bloque) + '"></td><td><select data-k="tipo">' +
+          FB.TIPOS.map(function (t) { return '<option' + (t === p.tipo ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></td><td><button class="btn small ghost" data-del aria-label="Borrar">✕</button></td></tr>';
+      }).join('') + '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn small" id="pt-add">Añadir partida</button><button class="btn small primary" id="pt-save">Guardar partidas</button></div></details></div>';
+  }
+  function collectRows(tbl) {
+    return $$('tbody tr', tbl).map(function (tr) {
+      var o = {}; $$('[data-k]', tr).forEach(function (el) { o[el.getAttribute('data-k')] = el.value; });
+      if (tr.getAttribute('data-id')) o.id = tr.getAttribute('data-id');
+      return o;
+    });
+  }
+  function bindPartidas(v) {
+    var tbl = $('#pt-tbl', v);
+    $$('[data-del]', tbl).forEach(function (b) { b.onclick = function () { b.closest('tr').remove(); }; });
+    $('#pt-add', v).onclick = function () {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td><input class="wide" data-k="tipologia"></td><td><input class="wide" data-k="bloque" value="OTROS GASTOS"></td><td><select data-k="tipo">' + FB.TIPOS.map(function (t) { return '<option' + (t === 'Gasto' ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></td><td></td>';
+      $('tbody', tbl).appendChild(tr); $('input', tr).focus();
+    };
+    $('#pt-save', v).onclick = function () {
+      busy(true);
+      api('apiSavePartidas', collectRows(tbl)).then(function (p) { S.data.partidas = p; return api('apiReclassify'); }).then(function (r) {
+        S.data.movimientos = r.movimientos; busy(false); toast('Partidas guardadas.'); render();
+      }, fail);
+    };
+  }
+
+  function viewReglasHtml() {
+    var prepared = FB.prepareRules(S.data.reglas);
+    var counts = {};
+    S.data.movimientos.forEach(function (m) { if (m.estado === 'regla' && m.regla) counts[m.regla] = (counts[m.regla] || 0) + 1; });
+    var conflicts = {};
+    S.data.movimientos.forEach(function (m) { if (m.conflicto) conflicts[m.regla] = m.conflicto; });
+    var opts = function (sel) { return S.data.partidas.map(function (p) { return '<option' + (p.tipologia === sel ? ' selected' : '') + '>' + esc(p.tipologia) + '</option>'; }).join(''); };
+    return '<div class="card"><details' + (S.openRules ? ' open' : '') + ' id="rg-det"><summary>Reglas de clasificación (' + S.data.reglas.length + ')</summary>' +
+      '<p class="sub" style="margin-top:6px">Si el concepto contiene el texto, va a esa partida. Si casan varias, gana la más específica (más condiciones y texto más largo). Mayúsculas y tildes dan igual.</p>' +
+      '<input type="search" id="rg-q" placeholder="Filtrar reglas" style="width:100%;margin-bottom:8px">' +
+      '<div class="tbl-wrap"><table id="rg-tbl"><thead><tr><th>Contiene</th><th style="text-align:left">Partida</th><th>Signo</th><th>Mín</th><th>Máx</th><th>Meses</th><th>Usos</th><th></th></tr></thead><tbody>' +
+      S.data.reglas.map(function (r) {
+        var pn = FB.norm(r.patron);
+        return '<tr data-id="' + esc(r.id) + '"><td><input class="wide" data-k="patron" value="' + esc(r.patron) + '" style="min-width:150px"></td><td><select data-k="tipologia">' + opts(r.tipologia) + '</select></td>' +
+          '<td><select data-k="signo"><option value=""></option><option' + (r.signo === 'Gasto' ? ' selected' : '') + '>Gasto</option><option' + (r.signo === 'Ingreso' ? ' selected' : '') + '>Ingreso</option></select></td>' +
+          '<td><input data-k="min" value="' + esc(r.min) + '" style="width:64px"></td><td><input data-k="max" value="' + esc(r.max) + '" style="width:64px"></td><td><input data-k="meses" value="' + esc(r.meses) + '" style="width:64px"></td>' +
+          '<td class="num">' + (counts[pn] || 0) + (conflicts[pn] ? ' <span title="Empata con: ' + esc(conflicts[pn]) + '">⚠</span>' : '') + '</td><td><button class="btn small ghost" data-del aria-label="Borrar">✕</button></td></tr>';
+      }).join('') + '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn small" id="rg-add">Añadir regla</button><button class="btn small primary" id="rg-save">Guardar y reclasificar</button></div>' +
+      (prepared.length !== S.data.reglas.length ? '<p class="small muted">' + (S.data.reglas.length - prepared.length) + ' reglas inactivas (sin texto o sin partida).</p>' : '') + '</details></div>';
+  }
+  function bindReglas(v) {
+    var tbl = $('#rg-tbl', v);
+    $('#rg-det', v).ontoggle = function () { S.openRules = this.open; };
+    $$('[data-del]', tbl).forEach(function (b) { b.onclick = function () { b.closest('tr').remove(); }; });
+    $('#rg-q', v).oninput = function () {
+      var q = FB.norm(this.value);
+      $$('tbody tr', tbl).forEach(function (tr) { var t = FB.norm($('[data-k=patron]', tr).value + ' ' + $('[data-k=tipologia]', tr).value); tr.hidden = q && t.indexOf(q) < 0; });
+    };
+    $('#rg-add', v).onclick = function () {
+      var tr = document.createElement('tr');
+      tr.innerHTML = '<td><input class="wide" data-k="patron" style="min-width:150px"></td><td><select data-k="tipologia">' + S.data.partidas.map(function (p) { return '<option>' + esc(p.tipologia) + '</option>'; }).join('') + '</select></td><td><select data-k="signo"><option value=""></option><option>Gasto</option><option>Ingreso</option></select></td><td><input data-k="min" style="width:64px"></td><td><input data-k="max" style="width:64px"></td><td><input data-k="meses" style="width:64px"></td><td></td><td></td>';
+      $('tbody', tbl).insertBefore(tr, $('tbody', tbl).firstChild); $('input', tr).focus();
+    };
+    $('#rg-save', v).onclick = function () {
+      var rows = collectRows(tbl);
+      var old = {}; S.data.reglas.forEach(function (r) { old[r.id] = r; });
+      rows = rows.map(function (r) { return Object.assign({}, old[r.id] || {}, r); });
+      busy(true);
+      api('apiSaveRules', rows).then(function (r) { S.data.reglas = r.reglas; S.data.movimientos = r.movimientos; busy(false); toast('Reglas guardadas. ' + r.stats.regla + ' movimientos por regla, ' + r.stats.pendiente + ' sin clasificar.'); render(); }, fail);
+    };
+  }
+
+  // ------------------------------------------------------------ arranque
+  function reload() {
+    busy(true);
+    return api('apiBootstrap').then(function (d) {
+      S.data = d;
+      var ys = years();
+      if (!S.year || ys.indexOf(S.year) < 0) S.year = Number(d.config.anioActivo) || ys[ys.length - 1];
+      $('#year').innerHTML = ys.map(function (y) { return '<option' + (y === S.year ? ' selected' : '') + '>' + y + '</option>'; }).join('');
+      busy(false);
+      render();
+    }, function (e) {
+      busy(false);
+      $('#view').innerHTML = '<div class="banner err"><b>No se pudo cargar.</b> ' + esc(e.message || e) + '</div>';
+    });
+  }
+  $('#year').onchange = function () { S.year = Number(this.value); S.seg.hasta = null; S.pres.year = null; S.pres.draft = null; render(); };
+  $('#refresh').onclick = reload;
+  var h0 = (location.hash || '').slice(1);
+  if (TABS.some(function (t) { return t[0] === h0; })) S.tab = h0;
+  else if (h0 === 'insights') S.tab = 'seguimiento';
+  reload();
+})();
+</script>
+
 </body>
 </html>

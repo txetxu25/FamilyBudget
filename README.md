@@ -78,9 +78,11 @@ Cada extracto trae el saldo después de cada movimiento. La app comprueba que `s
 ## Instalación (una vez, unos 15 minutos)
 
 1. **Crea la hoja.** En Google Drive, crea una hoja de cálculo nueva llamada, por ejemplo, *Presupuesto familiar*.
-2. **Pega el código.** En la hoja, abre *Extensiones ▸ Apps Script*.
-   - Crea un archivo por cada fichero de [`dist/`](dist) y pega su contenido. Los `.js` van como *Secuencia de comandos* (`Code`, `Core`) y los `.html` como *HTML* (`Index`, `Styles`, `App`, `CoreClient`). Borra el `Código.gs` vacío que viene por defecto.
-   - En *Configuración del proyecto*, marca *Mostrar el archivo de manifiesto «appsscript.json»* y sustituye su contenido por [`dist/appsscript.json`](dist/appsscript.json). Esto activa el servicio avanzado de Drive, que se usa para leer los `.xls`.
+2. **Pega el código** (3 piezas). En la hoja, abre *Extensiones ▸ Apps Script*:
+   - En `Código.gs`, borra lo que haya y pega [`dist/Code.js`](dist/Code.js). Para copiarlo, ábrelo en GitHub ▸ *Raw* ▸ seleccionar todo.
+   - Pulsa *+ ▸ HTML*, llama al fichero `Index` (sin extensión) y pega [`dist/Index.html`](dist/Index.html).
+   - En *Configuración del proyecto* (engranaje), marca *Mostrar el archivo de manifiesto «appsscript.json»*. Vuelve al editor y sustituye su contenido por [`dist/appsscript.json`](dist/appsscript.json). Esto activa el servicio avanzado de Drive, que se usa para leer los `.xls`.
+   - Guarda (Ctrl+S).
    - Alternativa con terminal: `npm i -g @google/clasp && clasp login`, copia `.clasp.json.example` a `.clasp.json` con el ID del script y ejecuta `npm run push`.
 3. **Inicializa.** En el editor, elige la función `setup` y pulsa *Ejecutar*. Google pedirá permisos. Como la app no está "verificada" por Google (es vuestra), saldrá un aviso: *Configuración avanzada ▸ Ir a …*. `setup` crea las pestañas de la hoja.
 4. **Publica la web.** *Implementar ▸ Nueva implementación ▸ Aplicación web*:
@@ -114,7 +116,7 @@ Cambia `src/`, ejecuta `npm test` y `npm run build`, y vuelve a pegar o subir lo
 src/core.js      lógica pura (lectura de extractos, reglas, propuestas, agregados, insights). Se usa en servidor y cliente.
 src/server.js    Apps Script: hoja, Drive, API para la web, disparador diario
 src/*.html       interfaz (HtmlService): Index, Styles, App
-scripts/build.js genera dist/ (lo que se sube a Apps Script)
+scripts/build.js genera dist/ (3 piezas que se pegan en Apps Script: Code.js, Index.html, appsscript.json)
 scripts/preview.js  vista previa local con API simulada: node scripts/preview.js [datos.json]
 dev/demo-data.js datos 100% inventados para la vista previa
 test/            tests (node --test), sin datos reales; test/gas-mock.js simula Apps Script en memoria

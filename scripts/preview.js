@@ -7,10 +7,7 @@ const files = require('./build.js');
 const dataPath = process.argv[2];
 const out = process.argv[3] || path.join(__dirname, '..', 'dev', 'preview.html');
 const data = dataPath ? JSON.parse(fs.readFileSync(dataPath, 'utf8')) : require('../dev/demo-data.js')();
-let html = files['Index.html'].replace(/<\?!= include\('(\w+)'\); \?>/g, (_, n) => {
-  if (n === 'CoreClient') return files['CoreClient.html'];
-  return files[n + '.html'];
-});
+let html = files['Index.html'];
 const mock = `<script>
 window.__DATA__ = ${JSON.stringify(Object.assign({ usuario: 'demo@example.com', archivos: [], hojaUrl: 'https://docs.google.com/spreadsheets/d/demo', config: { carpetaExtractos: '', anioActivo: '2026', usuarios: '', umbralAmbar: '0.15', umbralRojo: '0.3', minimoDesviacion: '50', excelCopia: '', excelAuto: 'no' } }, data))};
 window.__MOCK_API__ = function (fn, args) {
