@@ -725,9 +725,11 @@
   }
 
   // ---- asistente de presupuesto
-  function pickPartida(re, tipo) {
+  /** Primera partida que casa con el primer patrón posible (en orden de preferencia). */
+  function pickPartida(res, tipo) {
     tipo = tipo || 'Gasto';
-    var p = S.data.partidas.filter(function (x) { return re.test(FB.norm(x.tipologia)) && x.tipo === tipo; })[0];
+    var p = null;
+    [].concat(res).some(function (re) { p = S.data.partidas.filter(function (x) { return re.test(FB.norm(x.tipologia)) && x.tipo === tipo; })[0]; return !!p; });
     return p ? p.tipologia : ((S.data.partidas.filter(function (x) { return x.tipo === (tipo || 'Gasto'); })[0] || {}).tipologia || '');
   }
   // Plantillas orientativas (importes de referencia a revisar, no datos vuestros)
@@ -735,7 +737,7 @@
     return [
       { concepto: 'Bebé: pañales e higiene', tipologia: pickPartida(/SUPERMERCADO/), desde: 2, hasta: 12, importe: 60 },
       { concepto: 'Bebé: alimentación infantil', tipologia: pickPartida(/SUPERMERCADO/), desde: 4, hasta: 12, importe: 40 },
-      { concepto: 'Bebé: equipamiento y ropa', tipologia: pickPartida(/ROPA PEQUES|PEQUES|ADICIONAL/), desde: 1, hasta: 2, importe: 300 },
+      { concepto: 'Bebé: equipamiento y ropa', tipologia: pickPartida([/ROPA PEQUES/, /PEQUES/, /GASTOS ADICIONALES/]), desde: 1, hasta: 2, importe: 300 },
       { concepto: 'Bebé: farmacia y pediatra', tipologia: pickPartida(/FARMACIA/), desde: 2, hasta: 12, importe: 20 }
     ];
   }
