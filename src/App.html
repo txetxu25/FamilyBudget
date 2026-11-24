@@ -524,7 +524,8 @@
       '<select id="mv-mes"><option value="0">Todo el año</option>' + FB.MESES.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (S.mov.mes === i + 1 ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select>' +
       '<select id="mv-part" style="max-width:220px"><option value="">Todas las partidas</option><option value="' + esc(FB.SIN_GASTO) + '"' + (S.mov.partida === FB.SIN_GASTO ? ' selected' : '') + '>' + esc(FB.SIN_GASTO) + '</option>' +
       S.data.partidas.map(function (p) { return '<option' + (p.tipologia === S.mov.partida ? ' selected' : '') + '>' + esc(p.tipologia) + '</option>'; }).join('') + '</select></div>';
-    h += '<div class="row spread small" style="margin-bottom:6px"><span class="muted num">' + list.length + ' movimientos · ' + eurS(tot) + '</span>' +
+    h += '<div class="row spread small" style="margin-bottom:6px"><span class="muted num">' + list.length + ' movimientos · ' + eurS(tot) +
+      (list.length ? ' · <a href="#" id="mv-export">Exportar esta lista</a>' : '') + '</span>' +
       (withSug.length ? '<button class="btn small primary" id="accept-all">Aceptar ' + withSug.length + ' propuesta' + (withSug.length > 1 ? 's' : '') + '</button>' : '') + '</div>';
     if (!list.length) h += '<p class="empty">' + (S.mov.filtro === 'pendientes' ? 'Nada por revisar. Todo clasificado.' : 'No hay movimientos con estos filtros.') + '</p>';
     var day = '';
@@ -557,6 +558,14 @@
       S.mov.vistoAyuda = true;
       toast('Desliza un movimiento → para aceptar la propuesta, ← para clasificarlo a mano.', 4500);
     }
+    if ($('#mv-export')) $('#mv-export').onclick = function (e) {
+      e.preventDefault();
+      busy(true);
+      api('apiExport', 'movimientos', S.year, 'sheets', list.map(function (m) { return m.id; })).then(function (r) {
+        busy(false);
+        toast(r.filas + ' movimientos exportados a «' + r.nombre + '» (carpeta Exportaciones).', 6000);
+      }, fail);
+    };
     if ($('#accept-all')) $('#accept-all').onclick = function () {
       busy(true);
       api('apiAcceptSuggestions', withSug.map(function (m) { return m.id; })).then(function (r) {
@@ -808,39 +817,96 @@
   }
 
   // ------------------------------------------------------------ Ajustes
+  /** Tarjeta plegable; recuerda si estaba abierta. */
+  function fold(id, titulo, cuerpo, abiertaPorDefecto, resumen) {
+    S.open = S.open || {};
+    var open = S.open[id] !== undefined ? S.open[id] : !!abiertaPorDefecto;
+    return '<details class="card fold" data-fold="' + id + '"' + (open ? ' open' : '') + '><summary><span><h2>' + titulo + '</h2>' +
+      (resumen ? '<span class="sub fold-sum">' + resumen + '</span>' : '') + '</span></summary><div class="fold-body">' + cuerpo + '</div></details>';
+  }
+  var AUTO_TXT = {
+    mensual: 'El día 1 de cada mes, sobre las 7:00',
+    diario: 'Cada día a las 7:00, solo si hay ficheros nuevos',
+    no: 'Desactivado: solo con el botón'
+  };
+  var EXPORTS = [
+    ['movimientos', 'Movimientos del año'], ['seguimiento', 'Seguimiento y previsión (partida × mes)'], ['presupuesto', 'Presupuesto (partida × mes)'],
+    ['desviaciones', 'Desviaciones y sus causas'], ['interanual', 'Comparación con el año anterior'], ['subidas', 'Recibos que han subido'],
+    ['reglas', 'Reglas de clasificación'], ['partidas', 'Partidas']
+  ];
+
   function viewAjustes(v) {
     var c = S.data.config;
     var integ = FB.checkBalance(S.data.movimientos);
-    var h = '<div class="card"><h2>Extractos</h2><p class="sub">Deja los .xls del banco en la carpeta de Drive (puede tener subcarpetas por año). La app los lee, ignora los repetidos y clasifica.</p>' +
-      '<div class="stack" style="display:grid;gap:10px"><label class="field">Carpeta de extractos (enlace o ID de Drive)<input type="text" id="cf-folder" value="' + esc(c.carpetaExtractos) + '"></label>' +
-      '<div class="row"><button class="btn primary" id="cf-process">Procesar extractos ahora</button><button class="btn" id="cf-trigger">Procesar cada día automáticamente</button></div></div></div>';
-    h += '<div class="card"><h2>Integridad</h2>' + (integ.ok ? '<p class="sub">✔ La cadena de saldos cuadra en los ' + integ.revisados + ' movimientos.</p>' :
+    var modo = c.procesadoAuto || 'mensual';
+
+    var h = fold('extractos', 'Extractos',
+      '<p class="sub">Deja los .xls del banco en la carpeta de Drive, con una subcarpeta por año. La app lee todos los años, ignora lo repetido y clasifica. El presupuesto de cada año va en <b>Presupuesto_AAAA</b>, dentro de la carpeta de su año.</p>' +
+      '<label class="field">Carpeta de extractos (enlace o ID de Drive)<input type="text" id="cf-folder" value="' + esc(c.carpetaExtractos) + '"></label>' +
+      '<div class="row" style="margin-top:10px"><button class="btn primary" id="cf-process">Procesar ahora</button></div>' +
+      '<label class="field" style="margin-top:14px">Procesado automático<select id="cf-auto">' +
+      ['mensual', 'diario', 'no'].map(function (k) { return '<option value="' + k + '"' + (k === modo ? ' selected' : '') + '>' + AUTO_TXT[k] + '</option>'; }).join('') + '</select></label>' +
+      '<p class="small muted" style="margin:6px 0 0">' + (modo === 'mensual'
+        ? 'Ojo: el día 1 solo se procesa lo que ya esté en la carpeta. Si subes el extracto de un mes más tarde, entrará el día 1 siguiente (o pulsa Procesar ahora). "Cada día" no tiene ese retraso y no hace nada si no hay ficheros nuevos.'
+        : modo === 'diario' ? 'Si no hay ficheros nuevos no se toca nada.' : 'Tendrás que pulsar Procesar ahora cada vez que subas un extracto.') + '</p>',
+      true, AUTO_TXT[modo]);
+
+    h += fold('integridad', 'Integridad y ficheros', (integ.ok ? '<p class="sub">✔ La cadena de saldos cuadra en los ' + integ.revisados + ' movimientos.</p>' :
       '<div class="banner">' + integ.roturas.map(function (r) { return '<div>' + r.fecha.split('-').reverse().join('/') + ': el banco arranca con ' + eur(r.saldoBanco, 1) + ' y los extractos acaban en ' + eur(r.saldoEsperado, 1) + ' (' + eurS(r.diferencia) + ').</div>'; }).join('') +
         '<div class="small" style="margin-top:6px">Suele ser un extracto que se descargó antes de acabar el mes. Vuelve a descargar ese mes completo y deja el fichero en la carpeta: los repetidos se ignoran.</div></div>') +
-      '<details><summary class="small">Ficheros procesados (' + S.data.archivos.length + ')</summary><div class="small" style="margin-top:6px">' +
-      S.data.archivos.map(function (a) { return '<div>' + esc(a.carpeta) + '/' + esc(a.nombre) + ' — ' + esc(a.resultado) + ' · ' + esc(a.nuevos) + ' nuevos de ' + esc(a.movimientos) + '</div>'; }).join('') + '</div></details></div>';
-    h += '<div class="card"><h2>General</h2><div class="row" style="align-items:flex-end">' +
+      '<div class="small" style="margin-top:6px"><b>Ficheros procesados (' + S.data.archivos.length + ')</b>' +
+      S.data.archivos.map(function (a) { return '<div>' + esc(a.carpeta) + '/' + esc(a.nombre) + ' — ' + esc(a.resultado) + ' · ' + esc(a.nuevos) + ' nuevos de ' + esc(a.movimientos) + '</div>'; }).join('') + '</div>',
+      !integ.ok, integ.ok ? '✔ Saldos cuadrados' : '⚠ ' + integ.roturas.length + ' hueco(s) entre extractos');
+
+    h += fold('seguimiento', 'Seguimiento',
+      '<p class="sub">Año que se abre por defecto y cuándo una desviación se marca como "Vigilar" o "Desviado".</p>' +
+      '<div class="row" style="align-items:flex-end">' +
       '<label class="field">Año por defecto<input type="number" id="cf-year" value="' + esc(c.anioActivo) + '" style="width:100px"></label>' +
-      '<label class="field">Umbral aviso (%)<input type="number" id="cf-amb" value="' + Math.round(100 * Number(c.umbralAmbar)) + '" style="width:90px"></label>' +
-      '<label class="field">Umbral desviado (%)<input type="number" id="cf-roj" value="' + Math.round(100 * Number(c.umbralRojo)) + '" style="width:90px"></label>' +
+      '<label class="field">Vigilar desde (%)<input type="number" id="cf-amb" value="' + Math.round(100 * Number(c.umbralAmbar)) + '" style="width:90px"></label>' +
+      '<label class="field">Desviado desde (%)<input type="number" id="cf-roj" value="' + Math.round(100 * Number(c.umbralRojo)) + '" style="width:90px"></label>' +
       '<label class="field">Ignorar desviaciones de menos de (€)<input type="number" id="cf-min" value="' + esc(c.minimoDesviacion) + '" style="width:90px"></label></div>' +
-      '<label class="field" style="margin-top:10px">Usuarios permitidos (emails separados por comas; vacío = quien tenga la hoja compartida)<input type="text" id="cf-users" value="' + esc(c.usuarios) + '"></label>' +
-      '<div class="row" style="margin-top:10px"><button class="btn primary" id="cf-save">Guardar ajustes</button><span class="small muted">Conectado como ' + esc(S.data.usuario || '—') + '</span></div></div>';
-    h += '<div class="card"><h2>La hoja de cálculo</h2><p class="sub">Todo se guarda en una hoja de Google con las mismas pestañas que vuestro Excel (Movimientos, Reglas_Categorizacion, Maestro_Tipologias, FC) y dos que escribe la app: Resumen (real, presupuesto y previsión) e Insights. ' +
-      'Podéis editarla a mano: cambiar la partida de un movimiento, añadir un gasto en efectivo como fila nueva, tocar reglas o presupuesto. La app lo respeta.</p>' +
-      '<div class="row">' + (S.data.hojaUrl ? '<a class="btn" href="' + esc(S.data.hojaUrl) + '" target="_blank" rel="noopener">Abrir la hoja</a>' : '') + '<button class="btn" id="cf-recalc">Recalcular resumen</button></div>' +
-      '<h3 style="font-size:14px;margin:16px 0 4px">Copia en Excel (.xlsx)</h3><p class="sub">Una copia de toda la hoja en un .xlsx de Drive, para abrirla con Excel. Es solo una foto: lo que se edite en ese .xlsx no vuelve a la app. ' +
-      'Si eliges vuestro BUDGET_HOME.xlsx como destino, su contenido se sustituye por completo (Power Query y tablas dinámicas incluidas).</p>' +
+      '<div class="row" style="margin-top:10px"><button class="btn primary" id="cf-save-seg">Guardar</button></div>',
+      false, 'Año ' + esc(c.anioActivo) + ' · vigilar ' + Math.round(100 * Number(c.umbralAmbar)) + ' % · desviado ' + Math.round(100 * Number(c.umbralRojo)) + ' %');
+
+    h += fold('acceso', 'Acceso',
+      '<p class="sub">Solo estas cuentas pueden abrir la app (vacío = cualquiera con la hoja compartida). Lo que da acceso a los datos sigue siendo compartir la hoja y la carpeta en Drive.</p>' +
+      '<label class="field">Usuarios permitidos (emails separados por comas)<input type="text" id="cf-users" value="' + esc(c.usuarios) + '"></label>' +
+      '<div class="row" style="margin-top:10px"><button class="btn primary" id="cf-save-acc">Guardar</button><span class="small muted">Conectado como ' + esc(S.data.usuario || '—') + '</span></div>',
+      false, (c.usuarios ? c.usuarios.split(/[,;\s]+/).filter(Boolean).length + ' usuario(s)' : 'Sin restricción'));
+
+    h += fold('hoja', 'La hoja de cálculo',
+      '<p class="sub">El libro tiene las pestañas Movimientos, Reglas_Categorizacion y Maestro_Tipologias, más Resumen e Insights, que escribe la app. ' +
+      '<b>Resumen e Insights se actualizan solos</b> cada vez que se procesan extractos (con el botón o de forma automática) o cambiáis algo desde la app. ' +
+      'Solo hace falta recalcular si editáis la hoja a mano (por ejemplo, una partida o un gasto en efectivo).</p>' +
+      '<div class="row">' + (S.data.hojaUrl ? '<a class="btn" href="' + esc(S.data.hojaUrl) + '" target="_blank" rel="noopener">Abrir la hoja</a>' : '') + '<button class="btn" id="cf-recalc">Recalcular tras editar a mano</button></div>',
+      false, 'Resumen e Insights automáticos');
+
+    var ys = years();
+    h += fold('exportar', 'Exportar datos',
+      '<p class="sub">Crea un fichero nuevo con los datos elegidos en la carpeta <b>Exportaciones</b>, junto a la hoja, para trabajar con ellos aparte. Desde Movimientos también puedes exportar solo lo filtrado.</p>' +
+      '<div class="row" style="align-items:flex-end">' +
+      '<label class="field" style="flex:1;min-width:200px">Qué<select id="ex-tipo">' + EXPORTS.map(function (e) { return '<option value="' + e[0] + '">' + e[1] + '</option>'; }).join('') + '</select></label>' +
+      '<label class="field">Año<select id="ex-anio">' + ys.map(function (y) { return '<option' + (y === S.year ? ' selected' : '') + '>' + y + '</option>'; }).join('') + '</select></label>' +
+      '<label class="field">Formato<select id="ex-fmt"><option value="sheets">Hoja de Google</option><option value="xlsx">Excel (.xlsx)</option></select></label>' +
+      '<button class="btn primary" id="ex-go">Exportar</button></div><div id="ex-out"></div>' +
+      '<h3 style="font-size:14px;margin:18px 0 4px">Copia completa del libro (.xlsx)</h3><p class="sub">Todo el libro en un .xlsx de Drive. Es una foto: lo que edites en él no vuelve a la app. ' +
+      'Si eliges vuestro BUDGET_HOME.xlsx como destino, su contenido se sustituye por completo.</p>' +
       '<div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:200px">Fichero .xlsx de destino (vacío = se crea uno junto a la hoja)<input type="text" id="cf-xlsx" value="' + esc(c.excelCopia) + '"></label>' +
-      '<label class="check small"><input type="checkbox" id="cf-xauto"' + (c.excelAuto === 'si' ? ' checked' : '') + '> Actualizar cada día</label>' +
-      '<button class="btn" id="cf-export">Exportar ahora</button></div></div>';
-    h += '<div class="card"><h2>Importar desde el Excel</h2><p class="sub">Trae partidas, reglas y presupuesto de BUDGET_HOME.xlsx (hojas Maestro_Tipologias, Reglas_Categorizacion y FC).</p>' +
-      '<div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:200px">Enlace o ID del Excel en Drive<input type="text" id="im-file"></label>' +
-      '<label class="field">Año del presupuesto<input type="number" id="im-year" value="' + S.year + '" style="width:100px"></label>' +
-      '<label class="field">Modo<select id="im-mode"><option value="reemplazar">Reemplazar</option><option value="anadir">Solo añadir lo que falte</option></select></label>' +
-      '<button class="btn" id="im-go">Importar</button></div></div>';
+      '<label class="check small"><input type="checkbox" id="cf-xauto"' + (c.excelAuto === 'si' ? ' checked' : '') + '> Actualizar al procesar</label>' +
+      '<button class="btn" id="cf-export">Exportar libro</button></div>',
+      false, 'Hoja de Google o Excel');
+
     h += viewPartidasHtml() + viewReglasHtml();
+
+    h += fold('importar', 'Importar desde Excel (uso puntual)',
+      '<p class="sub">Trae partidas, reglas y presupuesto de un libro con las hojas Maestro_Tipologias, Reglas_Categorizacion y FC. Solo para cargas iniciales: el día a día se hace en la app.</p>' +
+      '<div class="row" style="align-items:flex-end"><label class="field" style="flex:1;min-width:200px">Enlace o ID del libro en Drive<input type="text" id="im-file"></label>' +
+      '<label class="field">Año del presupuesto<input type="number" id="im-year" value="' + S.year + '" style="width:100px"></label>' +
+      '<label class="field">Modo<select id="im-mode"><option value="anadir">Solo añadir lo que falte</option><option value="reemplazar">Reemplazar</option></select></label>' +
+      '<button class="btn" id="im-go">Importar</button></div>', false);
     v.innerHTML = h;
+
+    $$('details[data-fold]', v).forEach(function (d) { d.addEventListener('toggle', function () { S.open[d.getAttribute('data-fold')] = d.open; }); });
 
     $('#cf-process').onclick = function () {
       var folder = $('#cf-folder').value.trim();
@@ -850,11 +916,34 @@
         var nuevos = r.archivos.reduce(function (s, a) { return s + (a.nuevos || 0); }, 0);
         var errs = r.archivos.filter(function (a) { return /^error/.test(a.resultado); });
         return reload().then(function () {
-          toast(r.archivos.length ? r.archivos.length + ' fichero(s) leídos, ' + nuevos + ' movimientos nuevos.' + (errs.length ? ' ' + errs.length + ' con error.' : '') : 'No hay ficheros nuevos.', 5000);
+          toast(r.archivos.length ? r.archivos.length + ' fichero(s) leídos, ' + nuevos + ' movimientos nuevos.' + (errs.length ? ' ' + errs.length + ' con error: ' + errs.map(function (e) { return e.nombre + ' (' + e.resultado + ')'; }).join('; ') : '') : 'No hay ficheros nuevos.', 7000);
         });
       }).catch(fail);
     };
+    $('#cf-auto').onchange = function () {
+      busy(true);
+      api('apiSetAutoProcess', this.value).then(function (r) { S.data.config = r.config; busy(false); toast(r.mensaje, 5000); render(); }, fail);
+    };
+    var save = function (vals, msg) {
+      busy(true);
+      api('apiSaveConfig', vals).then(function (cfg) { S.data.config = cfg; busy(false); toast(msg); render(); }, fail);
+    };
+    $('#cf-save-seg').onclick = function () {
+      save({ anioActivo: $('#cf-year').value, umbralAmbar: Number($('#cf-amb').value) / 100, umbralRojo: Number($('#cf-roj').value) / 100, minimoDesviacion: $('#cf-min').value }, 'Ajustes de seguimiento guardados.');
+    };
+    $('#cf-save-acc').onclick = function () {
+      var me = (S.data.usuario || '').toLowerCase(), lista = $('#cf-users').value.toLowerCase();
+      if (lista.trim() && me && lista.indexOf(me) < 0 && !confirm('Tu cuenta (' + me + ') no está en la lista: dejarás de poder abrir la app. ¿Seguro?')) return;
+      save({ usuarios: $('#cf-users').value }, 'Usuarios guardados.');
+    };
     $('#cf-recalc').onclick = function () { busy(true); api('apiReclassify').then(function (r) { S.data.movimientos = r.movimientos; busy(false); toast('Resumen e insights de la hoja actualizados.'); render(); }, fail); };
+    $('#ex-go').onclick = function () {
+      busy(true);
+      api('apiExport', $('#ex-tipo').value, Number($('#ex-anio').value), $('#ex-fmt').value).then(function (r) {
+        busy(false);
+        $('#ex-out').innerHTML = '<div class="banner" style="margin-top:10px;background:var(--surface-2);border-color:var(--border)">✔ ' + esc(r.nombre) + ' (' + r.filas + ' filas) · <a href="' + esc(r.url) + '" target="_blank" rel="noopener">Abrir</a></div>';
+      }, fail);
+    };
     $('#cf-export').onclick = function () {
       busy(true);
       api('apiSaveConfig', { excelCopia: $('#cf-xlsx').value.trim(), excelAuto: $('#cf-xauto').checked ? 'si' : 'no' })
@@ -862,14 +951,8 @@
         .then(function (r) { return reload().then(function () { toast('Copia guardada: ' + r.nombre, 5000); }); }).catch(fail);
     };
     $('#cf-xauto').onchange = function () { api('apiSaveConfig', { excelAuto: this.checked ? 'si' : 'no' }).then(function (cfg) { S.data.config = cfg; toast('Guardado.'); }, fail); };
-    $('#cf-trigger').onclick = function () { busy(true); api('apiInstallDailyTrigger').then(function (m) { busy(false); toast(m); }, fail); };
-    $('#cf-save').onclick = function () {
-      busy(true);
-      api('apiSaveConfig', { carpetaExtractos: $('#cf-folder').value.trim(), anioActivo: $('#cf-year').value, umbralAmbar: Number($('#cf-amb').value) / 100, umbralRojo: Number($('#cf-roj').value) / 100, minimoDesviacion: $('#cf-min').value, usuarios: $('#cf-users').value })
-        .then(function (cfg) { S.data.config = cfg; busy(false); toast('Ajustes guardados.'); render(); }, fail);
-    };
     $('#im-go').onclick = function () {
-      var f = $('#im-file').value.trim(); if (!f) return toast('Pega el enlace del Excel.');
+      var f = $('#im-file').value.trim(); if (!f) return toast('Pega el enlace del libro.');
       if ($('#im-mode').value === 'reemplazar' && !confirm('Se sustituirán las partidas, las reglas y el presupuesto de ' + $('#im-year').value + '. ¿Seguir?')) return;
       busy(true);
       api('apiImportExcel', f, Number($('#im-year').value), $('#im-mode').value).then(function (r) {
@@ -880,12 +963,14 @@
   }
 
   function viewPartidasHtml() {
-    return '<div class="card"><details><summary>Partidas (' + S.data.partidas.length + ')</summary><p class="sub" style="margin-top:6px">El nombre es la clave: si lo cambias, cambia también en reglas y presupuesto a mano.</p>' +
+    return fold('partidas', 'Partidas',
+      '<p class="sub">El nombre es la clave: si lo cambias, cambia también en reglas y presupuesto.</p>' +
       '<div class="tbl-wrap"><table id="pt-tbl"><thead><tr><th>Partida</th><th style="text-align:left">Bloque</th><th style="text-align:left">Tipo</th><th></th></tr></thead><tbody>' +
       S.data.partidas.map(function (p, i) {
         return '<tr data-i="' + i + '"><td><input class="wide" data-k="tipologia" value="' + esc(p.tipologia) + '"></td><td><input class="wide" data-k="bloque" value="' + esc(p.bloque) + '"></td><td><select data-k="tipo">' +
           FB.TIPOS.map(function (t) { return '<option' + (t === p.tipo ? ' selected' : '') + '>' + t + '</option>'; }).join('') + '</select></td><td><button class="btn small ghost" data-del aria-label="Borrar">✕</button></td></tr>';
-      }).join('') + '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn small" id="pt-add">Añadir partida</button><button class="btn small primary" id="pt-save">Guardar partidas</button></div></details></div>';
+      }).join('') + '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn small" id="pt-add">Añadir partida</button><button class="btn small primary" id="pt-save">Guardar partidas</button></div>',
+      false, S.data.partidas.length + ' partidas');
   }
   function collectRows(tbl) {
     return $$('tbody tr', tbl).map(function (tr) {
@@ -904,9 +989,7 @@
     };
     $('#pt-save', v).onclick = function () {
       busy(true);
-      api('apiSavePartidas', collectRows(tbl)).then(function (p) { S.data.partidas = p; return api('apiReclassify'); }).then(function (r) {
-        S.data.movimientos = r.movimientos; busy(false); toast('Partidas guardadas.'); render();
-      }, fail);
+      api('apiSavePartidas', collectRows(tbl)).then(function (p) { S.data.partidas = p.partidas || p; if (p.movimientos) S.data.movimientos = p.movimientos; busy(false); toast('Partidas guardadas.'); render(); }, fail);
     };
   }
 
@@ -917,8 +1000,8 @@
     var conflicts = {};
     S.data.movimientos.forEach(function (m) { if (m.conflicto) conflicts[m.regla] = m.conflicto; });
     var opts = function (sel) { return S.data.partidas.map(function (p) { return '<option' + (p.tipologia === sel ? ' selected' : '') + '>' + esc(p.tipologia) + '</option>'; }).join(''); };
-    return '<div class="card"><details' + (S.openRules ? ' open' : '') + ' id="rg-det"><summary>Reglas de clasificación (' + S.data.reglas.length + ')</summary>' +
-      '<p class="sub" style="margin-top:6px">Si el concepto contiene el texto, va a esa partida. Si casan varias, gana la más específica (más condiciones y texto más largo). Mayúsculas y tildes dan igual.</p>' +
+    return fold('reglas', 'Reglas de clasificación',
+      '<p class="sub">Si el concepto contiene el texto, va a esa partida. Si casan varias, gana la más específica (más condiciones y texto más largo). Mayúsculas, tildes, espacios y puntos dan igual.</p>' +
       '<input type="search" id="rg-q" placeholder="Filtrar reglas" style="width:100%;margin-bottom:8px">' +
       '<div class="tbl-wrap"><table id="rg-tbl"><thead><tr><th>Contiene</th><th style="text-align:left">Partida</th><th>Signo</th><th>Mín</th><th>Máx</th><th>Meses</th><th>Usos</th><th></th></tr></thead><tbody>' +
       S.data.reglas.map(function (r) {
@@ -928,11 +1011,11 @@
           '<td><input data-k="min" value="' + esc(r.min) + '" style="width:64px"></td><td><input data-k="max" value="' + esc(r.max) + '" style="width:64px"></td><td><input data-k="meses" value="' + esc(r.meses) + '" style="width:64px"></td>' +
           '<td class="num">' + (counts[pn] || 0) + (conflicts[pn] ? ' <span title="Empata con: ' + esc(conflicts[pn]) + '">⚠</span>' : '') + '</td><td><button class="btn small ghost" data-del aria-label="Borrar">✕</button></td></tr>';
       }).join('') + '</tbody></table></div><div class="row" style="margin-top:8px"><button class="btn small" id="rg-add">Añadir regla</button><button class="btn small primary" id="rg-save">Guardar y reclasificar</button></div>' +
-      (prepared.length !== S.data.reglas.length ? '<p class="small muted">' + (S.data.reglas.length - prepared.length) + ' reglas inactivas (sin texto o sin partida).</p>' : '') + '</details></div>';
+      (prepared.length !== S.data.reglas.length ? '<p class="small muted">' + (S.data.reglas.length - prepared.length) + ' reglas inactivas (sin texto o sin partida).</p>' : ''),
+      false, S.data.reglas.length + ' reglas');
   }
   function bindReglas(v) {
     var tbl = $('#rg-tbl', v);
-    $('#rg-det', v).ontoggle = function () { S.openRules = this.open; };
     $$('[data-del]', tbl).forEach(function (b) { b.onclick = function () { b.closest('tr').remove(); }; });
     $('#rg-q', v).oninput = function () {
       var q = FB.norm(this.value);

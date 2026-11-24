@@ -41,6 +41,7 @@ class FakeSheet {
   }
   getDataRange() { return new FakeRange(this, 1, 1, Math.max(1, this.getLastRow()), Math.max(1, this.getLastColumn())); }
   clear() { this.data = []; return this; }
+  setName(n) { this.name = n; return this; }
   setFrozenRows() {} setFrozenColumns() {} setColumnWidth() {}
 }
 
@@ -78,7 +79,8 @@ function loadServer(opts) {
     getId: () => f.id, getName: () => f.name, getMimeType: () => f.mime || 'application/vnd.ms-excel',
     getLastUpdated: () => new Date(f.modified || '2026-11-01T00:00:00Z'), getBlob: () => ({ __file: f }),
     getParents: () => { let done = !f.folder; return { hasNext: () => !done, next: () => { done = true; return folderObj(f.folder); } }; },
-    moveTo: (folder) => { f.folder = folder.__path; }
+    moveTo: (folder) => { f.folder = folder.__path; },
+    setTrashed: (v) => { f.trashed = !!v; }
   });
   // carpeta como en Drive: getName() es solo el último tramo de la ruta
   const folderObj = (path) => ({
@@ -99,6 +101,7 @@ function loadServer(opts) {
     return folderObj(p);
   };
   const exported = [];
+  const triggers = [];
   const ctx = {
     console,
     SpreadsheetApp: {
@@ -111,6 +114,7 @@ function loadServer(opts) {
         return ss;
       },
       openById: (id) => { if (!spreadsheets[id]) throw new Error('No existe ' + id); return spreadsheets[id]; },
+      flush: () => {},
       getUi: () => ({ createMenu: () => ({ addItem() { return this; }, addSeparator() { return this; }, addToUi() {} }) })
     },
     PropertiesService: { getScriptProperties: () => ({ getProperty: (k) => props[k] || null, setProperty: (k, v) => { props[k] = v; } }) },
@@ -144,13 +148,24 @@ function loadServer(opts) {
       }
     },
     UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getBlob: () => ({ setName() { return this; }, setContentType() { return this; } }) }) },
-    ScriptApp: { getOAuthToken: () => 'tok', getProjectTriggers: () => [], newTrigger: () => ({ timeBased() { return this; }, everyDays() { return this; }, atHour() { return this; }, create() {} }), getService: () => ({ getUrl: () => '' }) },
+    ScriptApp: {
+      getOAuthToken: () => 'tok',
+      getProjectTriggers: () => triggers.slice(),
+      deleteTrigger: (t) => { const i = triggers.indexOf(t); if (i >= 0) triggers.splice(i, 1); },
+      newTrigger: (fn) => {
+        const t = { fn, kind: '', getHandlerFunction: () => fn };
+        const b = { timeBased() { return b; }, everyDays() { t.kind = 'diario'; return b; }, onMonthDay(d) { t.kind = 'mensual-' + d; return b; }, atHour() { return b; }, create() { triggers.push(t); return t; } };
+        return b;
+      },
+      getService: () => ({ getUrl: () => '' })
+    },
     HtmlService: {}
   };
   vm.createContext(ctx);
   const src = (f) => fs.readFileSync(path.join(__dirname, '..', 'src', f), 'utf8');
   vm.runInContext(src('core.js').replace('if (typeof module', 'if (false && typeof module'), ctx, { filename: 'core.js' });
   vm.runInContext(src('server.js'), ctx, { filename: 'server.js' });
+  ctx.__triggers = triggers;
   ctx.__book = book; ctx.__exported = exported; ctx.__files = files; ctx.__spreadsheets = spreadsheets;
   return ctx;
 }

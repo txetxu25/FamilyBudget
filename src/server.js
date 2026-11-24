@@ -46,7 +46,8 @@ var DEFAULT_CONFIG = {
   excelCopia: '',         // fichero .xlsx de Drive donde volcar una copia (vacío = se crea al exportar)
   excelAuto: 'no',        // 'si' = exportar la copia .xlsx tras cada procesado diario
   asistente: '',          // parámetros y ajustes del asistente de presupuesto, por año (JSON)
-  alertasVistas: ''       // subidas de recibos ya revisadas (JSON con sus claves)
+  alertasVistas: '',      // subidas de recibos ya revisadas (JSON con sus claves)
+  procesadoAuto: 'mensual' // 'mensual' (día 1), 'diario' (solo si hay ficheros nuevos) o 'no'
 };
 
 // ------------------------------------------------------------------ arranque
@@ -628,8 +629,10 @@ function apiBootstrap() {
   // si alguien editó la hoja a mano, el estado se recalcula al vuelo (sin escribir)
   var partidas = readPartidas_(), reglas = readRules_();
   var c = FB.classifyAll(movs, reglas, partidas);
+  var cfg = config_();
+  ensureAutoTrigger_(cfg);
   return {
-    usuario: user_(), config: config_(), partidas: partidas, presupuesto: readBudget_(), reglas: reglas,
+    usuario: user_(), config: cfg, partidas: partidas, presupuesto: readBudget_(), reglas: reglas,
     movimientos: c.movimientos, archivos: readArchivos_(), hojaUrl: ss_().getUrl()
   };
 }
@@ -641,7 +644,8 @@ function apiProcessFolder() {
   return withLock_(function () { return processFolder_(); });
 }
 
-function processFolder_() {
+function processFolder_(opts) {
+  opts = opts || {};
   var cfg = config_();
   if (!cfg.carpetaExtractos) throw new Error('Configura la carpeta de extractos en Ajustes.');
   var root = extractsRoot_();
@@ -676,6 +680,7 @@ function processFolder_() {
     known[entry.fileId] = entry;
     report.push(entry);
   });
+  if (opts.soloSiNuevos && !report.length) return { archivos: [], stats: null };
   var c = commit_(movs);
   writeArchivos_(Object.keys(known).map(function (k) { return known[k]; }));
   return { archivos: report, stats: c.stats };
@@ -884,6 +889,122 @@ function apiImportExcel(fileIdOrUrl, anio, modo) {
   });
 }
 
+// ------------------------------------------------------------ exportar datos
+
+/** Carpeta "Exportaciones" junto a la hoja principal (se crea si no existe). */
+function exportFolder_() {
+  var parents = DriveApp.getFileById(ss_().getId()).getParents();
+  if (!parents.hasNext()) return null;
+  var parent = parents.next(), it = parent.getFolders();
+  while (it.hasNext()) { var f = it.next(); if (f.getName() === 'Exportaciones') return f; }
+  return parent.createFolder('Exportaciones');
+}
+
+/** Filas (con cabecera) de cada conjunto de datos exportable. */
+function exportRows_(tipo, anio, ids) {
+  var cfg = config_(), u = umbrales_(cfg);
+  var partidas = readPartidas_(), pm = {};
+  partidas.forEach(function (p) { pm[p.tipologia] = p; });
+  var movs = FB.classifyAll(readMovs_(), readRules_(), partidas).movimientos;
+  var budget = readBudget_();
+  var anioN = Number(anio) || Number(cfg.anioActivo);
+  var deAnio = function (m) { return !anio || Number(m.fecha.slice(0, 4)) === anioN; };
+  var r2 = FB.round2;
+  if (tipo === 'movimientos') {
+    var set = null;
+    if (ids && ids.length) { set = {}; ids.forEach(function (i) { set[i] = 1; }); }
+    return [['Fecha', 'Concepto', 'Detalle', 'Importe', 'Tipo', 'Partida', 'Bloque', 'Estado', 'Regla', 'Nota', 'Saldo', 'Cuenta', 'Fichero']].concat(
+      FB.chronoSort(movs.filter(function (m) { return set ? set[m.id] : deAnio(m); })).map(function (m) {
+        var p = pm[m.tipologia];
+        return [FB.toDate(m.fecha), m.concepto, m.detalle, m.importe, m.importe < 0 ? 'Gasto' : 'Ingreso', m.tipologia || '', p ? p.bloque : '',
+          m.estado || '', m.regla || '', m.nota || '', m.saldo == null ? '' : m.saldo, m.cuenta || '', m.archivo || ''];
+      }));
+  }
+  if (tipo === 'presupuesto') {
+    var bl = FB.budgetByLine(budget, anioN);
+    return [['Partida', 'Bloque', 'Tipo'].concat(FB.MESES).concat(['Total'])].concat(
+      Object.keys(bl).map(function (t) {
+        var p = pm[t] || { bloque: '', tipo: '' };
+        return [t, p.bloque, p.tipo].concat(bl[t]).concat([r2(bl[t].reduce(function (a, b) { return a + b; }, 0))]);
+      }));
+  }
+  if (tipo === 'seguimiento') {
+    var fc = FB.forecast({ year: anioN, partidas: partidas, movimientos: movs, presupuesto: budget, umbrales: u });
+    var head = ['Partida', 'Bloque', 'Tipo'];
+    FB.MESES.forEach(function (m, i) { head.push(m + (i < fc.hasta ? ' real' : ' previsión'), m + ' ppto'); });
+    head = head.concat(['Real acumulado', 'Ppto acumulado', 'Previsión cierre', 'Ppto anual', 'Desviación cierre', 'Cómo se prevé']);
+    return [head].concat(fc.filas.map(function (f) {
+      var row = [f.tipologia, f.bloque, f.tipo];
+      for (var i = 0; i < 12; i++) row.push(r2(f.serie[i]), r2(f.ppto[i]));
+      var pY = 0; for (var k = 0; k < fc.hasta; k++) pY += f.ppto[k];
+      return row.concat([f.realYTD, r2(pY), f.cierre, f.pptoAnual, f.desvCierre, f.detalle]);
+    }));
+  }
+  if (tipo === 'desviaciones') {
+    var hasta = FB.lastMonthWithData(movs, anioN) || 12;
+    return [['Partida', 'Bloque', 'Tipo', 'Real', 'Presupuesto', 'Desviación', 'Efecto en el ahorro', 'Causas']].concat(
+      FB.topDeviations({ year: anioN, partidas: partidas, movimientos: movs, presupuesto: budget, hasta: hasta, umbrales: u, minimo: u.minimo, limit: 50 }).map(function (e) {
+        return [e.tipologia, e.bloque || '', e.tipo, e.real, e.ppto, e.desv, -e.impacto, e.causas.map(function (c) { return c.texto; }).join('\n')];
+      }));
+  }
+  if (tipo === 'interanual') {
+    var cmp = FB.compareYears({ year: anioN, partidas: partidas, movimientos: movs });
+    if (!cmp) throw new Error('No hay datos de ' + (anioN - 1) + ' para comparar.');
+    return [['Partida', 'Bloque', 'Tipo', String(anioN), String(anioN - 1), 'Diferencia', 'Diferencia %']].concat(
+      cmp.filas.map(function (f) { return [f.tipologia, f.bloque, f.tipo, f.actual, f.anterior, f.dif, f.pct == null ? '' : r2(f.pct * 100)]; }));
+  }
+  if (tipo === 'subidas') {
+    return [['Comercio', 'Partida', 'Antes', 'Ahora', 'Subida %', 'Desde', 'Cargos al año', 'Impacto anual', 'Confirmada']].concat(
+      FB.detectPriceIncreases(movs).map(function (a) { return [a.comercio, a.tipologia, a.antes, a.ahora, r2(a.pct * 100), FB.toDate(a.desde), a.cargosAnio, a.impactoAnual, a.confirmada ? 'sí' : 'un solo recibo']; }));
+  }
+  if (tipo === 'reglas') {
+    return [['Contiene', 'Partida', 'Signo', 'Importe mín', 'Importe máx', 'Meses', 'Comentario', 'Origen']].concat(
+      readRules_().map(function (r) { return [r.patron, r.tipologia, r.signo, r.min, r.max, r.meses, r.comentario, r.origen]; }));
+  }
+  if (tipo === 'partidas') {
+    return [['Partida', 'Bloque', 'Tipo']].concat(partidas.map(function (p) { return [p.tipologia, p.bloque, p.tipo]; }));
+  }
+  throw new Error('No sé exportar "' + tipo + '".');
+}
+
+var EXPORT_NOMBRES = { movimientos: 'Movimientos', presupuesto: 'Presupuesto', seguimiento: 'Seguimiento y previsión', desviaciones: 'Desviaciones',
+  interanual: 'Comparación interanual', subidas: 'Recibos que han subido', reglas: 'Reglas', partidas: 'Partidas' };
+
+/**
+ * Exporta un conjunto de datos a un fichero nuevo en la carpeta "Exportaciones".
+ * formato: 'sheets' (hoja de Google) o 'xlsx'. ids: lista opcional de movimientos (exportar lo filtrado).
+ */
+function apiExport(tipo, anio, formato, ids) {
+  checkAccess_();
+  var rows = exportRows_(tipo, anio, ids);
+  var sello = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH.mm');
+  var porAnio = ['partidas', 'reglas', 'subidas'].indexOf(tipo) < 0 && !(ids && ids.length);
+  var nombre = (EXPORT_NOMBRES[tipo] || tipo) + (ids && ids.length ? ' (filtrados)' : '') + (porAnio && anio ? ' ' + anio : '') + ' · ' + sello;
+  var book = SpreadsheetApp.create(nombre);
+  var sh = book.getSheets()[0];
+  sh.setName((EXPORT_NOMBRES[tipo] || tipo).slice(0, 30));
+  if (rows.length) {
+    var w = rows[0].length;
+    rows = rows.map(function (r) { while (r.length < w) r.push(''); return r.slice(0, w); });
+    sh.getRange(1, 1, rows.length, w).setValues(rows);
+    sh.getRange(1, 1, 1, w).setFontWeight('bold');
+    sh.setFrozenRows(1);
+  }
+  var folder = exportFolder_();
+  var file = DriveApp.getFileById(book.getId());
+  if (folder) file.moveTo(folder);
+  if (formato !== 'xlsx') return { nombre: nombre, url: book.getUrl(), filas: rows.length - 1 };
+  SpreadsheetApp.flush();
+  var resp = UrlFetchApp.fetch('https://docs.google.com/spreadsheets/d/' + book.getId() + '/export?format=xlsx',
+    { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+  if (resp.getResponseCode() !== 200) throw new Error('Google no ha podido generar el .xlsx (' + resp.getResponseCode() + ').');
+  var meta = { name: nombre + '.xlsx' };
+  if (folder) meta.parents = [folder.getId()];
+  var x = Drive.Files.create(meta, resp.getBlob().setName(nombre + '.xlsx'));
+  file.setTrashed(true);
+  return { nombre: nombre + '.xlsx', url: 'https://drive.google.com/file/d/' + x.id + '/view', filas: rows.length - 1 };
+}
+
 // ------------------------------------------------------------ copia .xlsx
 
 /**
@@ -919,20 +1040,51 @@ function exportExcel_() {
 
 // ----------------------------------------------------------------- disparador
 
-/** Instala (una vez) el procesado diario. Se ejecuta con la cuenta de quien lo instala. */
-function apiInstallDailyTrigger() {
-  checkAccess_();
+// ---- procesado automático
+// Un solo disparador para toda la app (lo instala quien abra la app primero, o quien cambie el modo).
+var AUTO_HANDLERS = ['autoProcess', 'dailyProcess'];
+
+function installAutoTrigger_(modo) {
   ScriptApp.getProjectTriggers().forEach(function (t) {
-    if (t.getHandlerFunction() === 'dailyProcess') ScriptApp.deleteTrigger(t);
+    if (AUTO_HANDLERS.indexOf(t.getHandlerFunction()) >= 0) ScriptApp.deleteTrigger(t);
   });
-  ScriptApp.newTrigger('dailyProcess').timeBased().everyDays(1).atHour(7).create();
-  return 'Procesado diario activado (sobre las 7:00).';
+  if (modo === 'mensual') ScriptApp.newTrigger('autoProcess').timeBased().onMonthDay(1).atHour(7).create();
+  else if (modo === 'diario') ScriptApp.newTrigger('autoProcess').timeBased().everyDays(1).atHour(7).create();
+  PropertiesService.getScriptProperties().setProperty('AUTO_MODO', modo + '|' + user_());
 }
 
-function dailyProcess() {
-  withLock_(function () {
-    if (config_().carpetaExtractos) processFolder_();
-    else commit_(readMovs_());
-    if (config_().excelAuto === 'si') exportExcel_();
+/** Al abrir la app: si el modo configurado aún no tiene disparador, se instala (una vez para todos). */
+function ensureAutoTrigger_(cfg) {
+  var modo = cfg.procesadoAuto || 'mensual';
+  var hecho = String(PropertiesService.getScriptProperties().getProperty('AUTO_MODO') || '').split('|')[0];
+  if (hecho === modo) return;
+  try { installAutoTrigger_(modo); } catch (e) { /* sin permiso para disparadores: se puede activar desde Ajustes */ }
+}
+
+/** Cambia el procesado automático: 'mensual' | 'diario' | 'no'. */
+function apiSetAutoProcess(modo) {
+  checkAccess_();
+  if (['mensual', 'diario', 'no'].indexOf(modo) < 0) throw new Error('Modo no válido: ' + modo);
+  return withLock_(function () {
+    var cfg = config_();
+    cfg.procesadoAuto = modo;
+    writeConfig_(cfg);
+    installAutoTrigger_(modo);
+    return { config: cfg, mensaje: modo === 'mensual' ? 'Se procesará automáticamente el día 1 de cada mes (sobre las 7:00).' :
+      modo === 'diario' ? 'Se mirará cada día (sobre las 7:00) y solo se procesará si hay ficheros nuevos.' : 'Procesado automático desactivado.' };
   });
 }
+
+/** Compatibilidad con versiones anteriores del botón. */
+function apiInstallDailyTrigger() { return apiSetAutoProcess('diario').mensaje; }
+
+function autoProcess() {
+  withLock_(function () {
+    var cfg = config_();
+    var r = cfg.carpetaExtractos ? processFolder_({ soloSiNuevos: cfg.procesadoAuto === 'diario' }) : null;
+    if (!r) commit_(readMovs_());
+    if (cfg.excelAuto === 'si' && (!r || r.archivos.length)) exportExcel_();
+  });
+}
+
+function dailyProcess() { autoProcess(); }

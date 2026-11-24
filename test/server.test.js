@@ -200,3 +200,53 @@ test('migra la pestaña FC antigua del libro principal a ficheros anuales y la e
   assert.ok(pres.some((b) => b.anio === 2026 && b.tipologia === 'Supermercado' && b.importe === 300));
   assert.ok(pres.some((b) => b.anio === 2025 && b.tipologia === 'Ocio' && b.importe === 50));
 });
+
+test('procesado automático: día 1 por defecto, se instala una sola vez y el modo diario no toca nada sin ficheros nuevos', () => {
+  const ctx = setupCtx();
+  ctx.apiSaveConfig({ carpetaExtractos: 'ROOTFOLDERID_ABCDEFGHIJKLMNOPQ', anioActivo: '2026' });
+  ctx.apiBootstrap();
+  assert.equal(ctx.__triggers.length, 1);
+  assert.equal(ctx.__triggers[0].kind, 'mensual-1');
+  ctx.apiBootstrap();
+  assert.equal(ctx.__triggers.length, 1, 'no se duplica al volver a abrir');
+  const r = ctx.apiSetAutoProcess('diario');
+  assert.match(r.mensaje, /solo se procesará si hay ficheros nuevos/);
+  assert.equal(ctx.__triggers.length, 1);
+  assert.equal(ctx.__triggers[0].kind, 'diario');
+  ctx.autoProcess();                                   // primera vez: procesa los dos extractos
+  const n = ctx.apiBootstrap().movimientos.length;
+  assert.equal(n, 5);
+  const antes = JSON.stringify(grid(ctx, 'Movimientos'));
+  ctx.autoProcess();                                   // sin ficheros nuevos: no reescribe
+  assert.equal(JSON.stringify(grid(ctx, 'Movimientos')), antes);
+  ctx.apiSetAutoProcess('no');
+  assert.equal(ctx.__triggers.length, 0);
+  assert.throws(() => ctx.apiSetAutoProcess('cada hora'), /no válido/);
+});
+
+test('exportar cada conjunto de datos a hoja de Google y a .xlsx', () => {
+  const ctx = setupCtx();
+  ctx.apiSaveConfig({ carpetaExtractos: 'ROOTFOLDERID_ABCDEFGHIJKLMNOPQ', anioActivo: '2026' });
+  ctx.apiImportExcel('XL', 2026, 'reemplazar');
+  ctx.apiProcessFolder();
+  const tipos = ['movimientos', 'seguimiento', 'presupuesto', 'desviaciones', 'subidas', 'reglas', 'partidas'];
+  tipos.forEach((t) => {
+    const r = ctx.apiExport(t, 2026, 'sheets');
+    assert.ok(r.url && r.nombre, t);
+    const f = ctx.__files.find((x) => x.name === r.nombre);
+    const g = ctx.__spreadsheets[f.id].getSheets()[0].getDataRange().getValues();
+    assert.equal(g.length - 1, r.filas, t + ': filas');
+  });
+  const mov = ctx.__files.find((x) => /^Movimientos 2026/.test(x.name));
+  assert.equal(ctx.__spreadsheets[mov.id].getSheets()[0].getDataRange().getValues().length, 6, 'cabecera + 5 movimientos');
+  // solo los filtrados
+  const ids = ctx.apiBootstrap().movimientos.filter((m) => m.concepto === 'NOMINA').map((m) => m.id);
+  assert.equal(ctx.apiExport('movimientos', 2026, 'sheets', ids).filas, 2);
+  // .xlsx: se crea el fichero Excel y se tira la hoja temporal
+  const x = ctx.apiExport('presupuesto', 2026, 'xlsx');
+  assert.match(x.nombre, /\.xlsx$/);
+  assert.ok(ctx.__exported.some((e) => e.meta && e.meta.name === x.nombre));
+  assert.ok(ctx.__files.find((f) => f.name === x.nombre.replace(/\.xlsx$/, '')).trashed);
+  assert.throws(() => ctx.apiExport('interanual', 2026, 'sheets'), /No hay datos de 2025/);
+  assert.throws(() => ctx.apiExport('otra cosa', 2026, 'sheets'), /No sé exportar/);
+});
