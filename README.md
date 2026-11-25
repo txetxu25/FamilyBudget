@@ -45,6 +45,19 @@ La app reescribe las pestañas completas. Haz tus cálculos propios en pestañas
 - La primera vez, la pestaña `FC` del libro principal (si existe) se pasa a los ficheros anuales y se elimina.
 - Para que tu pareja pueda guardar presupuesto desde la app, comparte la carpeta de extractos con ella como **editora**.
 
+## Clasificación y cierre de mes
+
+En Seguimiento, la tarjeta **Clasificación** muestra:
+- el porcentaje revisado (por regla, a mano, propuestas sin revisar y sin clasificar);
+- una barra por mes; los meses cerrados llevan ✓;
+- los comercios con más importe pendiente.
+
+Un mes se da por **cerrado** cuando todos sus movimientos están revisados (por regla o a mano; las propuestas sin aceptar no cuentan) y el mes ya ha terminado en el calendario. Al cerrarse un mes:
+- la app lo celebra y muestra el veredicto: *enhorabuena* si el gasto y el ahorro del mes están en línea con el presupuesto, o *atención* si se han desviado, con lo que más pesa;
+- se envía un correo con ese resumen a los usuarios de *Ajustes ▸ Acceso* (o a quien hizo la acción, si la lista está vacía). El correo sale de la cuenta de quien cierra el mes, así que Google pide permiso para enviar correo en su nombre.
+
+La primera vez solo se memorizan los meses que ya estaban cerrados, sin enviar nada.
+
 ## Recibos que han subido
 
 La app busca cargos fijos (recibos, cuotas, suscripciones) cuyo importe ha subido en los últimos 12 meses y lo muestra en Seguimiento y en la pestaña `Insights`, con el impacto anual. Un cargo cuenta si el mismo comercio cobra en al menos 4 meses con importe estable (variación < 10 %). Por eso la luz, el gas o el supermercado no aparecen. Cada mes se toma el cargo principal de cada comercio, para que los copagos no tapen la cuota. Con "Visto" la alerta desaparece hasta la siguiente subida.

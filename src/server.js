@@ -47,7 +47,8 @@ var DEFAULT_CONFIG = {
   excelAuto: 'no',        // 'si' = exportar la copia .xlsx tras cada procesado diario
   asistente: '',          // parámetros y ajustes del asistente de presupuesto, por año (JSON)
   alertasVistas: '',      // subidas de recibos ya revisadas (JSON con sus claves)
-  procesadoAuto: 'mensual' // 'mensual' (día 1), 'diario' (solo si hay ficheros nuevos) o 'no'
+  procesadoAuto: 'mensual', // 'mensual' (día 1), 'diario' (solo si hay ficheros nuevos) o 'no'
+  mesesCompletos: ''       // meses ya celebrados/avisados ('YYYY-MM', JSON). Vacío = aún sin inicializar
 };
 
 // ------------------------------------------------------------------ arranque
@@ -503,7 +504,64 @@ function commit_(movs, opts) {
     if (!years || years.length) writeBudget_(budget, partidas, c.movimientos, years ? { years: years } : {});
   }
   writeReport_(c.movimientos, partidas, budget);
+  c.completados = checkCompletedMonths_(c.movimientos, partidas, budget);
   return c;
+}
+
+// ---------------------------------------------------------- meses completados
+
+/**
+ * Detecta los meses cuya clasificación acaba de completarse (todo revisado y el mes ya terminado),
+ * envía un correo a los usuarios autorizados y devuelve el veredicto de cada uno para que la app
+ * lo celebre. La primera vez solo memoriza los meses que ya estaban completos (sin avisar).
+ */
+function checkCompletedMonths_(movs, partidas, budget) {
+  var cfg = config_();
+  var ahora = FB.completedMonths(movs, FB.ymd(new Date()));
+  var primeraVez = !cfg.mesesCompletos;
+  if (primeraVez && !movs.length) return []; // sin movimientos aún: se inicializa en la primera carga real
+  var antes = [];
+  try { antes = JSON.parse(cfg.mesesCompletos || '[]'); } catch (e) { antes = []; }
+  var nuevos = ahora.filter(function (k) { return antes.indexOf(k) < 0; });
+  if (!primeraVez && !nuevos.length) return [];
+  var todos = antes.concat(nuevos).sort();
+  cfg.mesesCompletos = JSON.stringify(todos);
+  writeConfig_(cfg);
+  if (primeraVez) return [];
+  var u = umbrales_(cfg);
+  var veredictos = nuevos.map(function (k) {
+    return FB.monthVerdict({ year: Number(k.slice(0, 4)), mes: Number(k.slice(5, 7)), partidas: partidas, movimientos: movs, presupuesto: budget, umbrales: u });
+  });
+  var enviado = false;
+  try { enviado = sendCompletionEmail_(veredictos, cfg); } catch (e) { console.warn('No se pudo enviar el correo de mes completado: ' + e.message); }
+  veredictos.forEach(function (v) { v.correo = !!enviado; });
+  return veredictos;
+}
+
+function sendCompletionEmail_(veredictos, cfg) {
+  if (!veredictos.length) return false;
+  var to = (cfg.usuarios || '').split(/[,;\s]+/).filter(Boolean);
+  if (!to.length && user_()) to = [user_()];
+  if (!to.length) return false;
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
+  var nombres = veredictos.map(function (v) { return v.nombre; });
+  var subject = '✅ ' + (nombres.length === 1 ? nombres[0] + ' clasificado al 100 %' : nombres.length + ' meses clasificados al 100 %: ' + nombres.join(', '));
+  var color = { ok: '#006300', aviso: '#8a5a00', alerta: '#b42323', 'sin-ppto': '#52514e' };
+  var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var bloques = veredictos.map(function (v) {
+    return '<div style="border:1px solid #e1e0d9;border-radius:12px;padding:14px 16px;margin:12px 0">' +
+      '<div style="font-weight:700;font-size:16px;color:' + (color[v.tipo] || '#0b0b0b') + '">' + esc(v.titulo) + '</div>' +
+      '<div style="margin-top:6px;color:#0b0b0b">' + esc(v.texto) + '</div></div>';
+  }).join('');
+  var html = '<div style="font:15px/1.45 -apple-system,Segoe UI,sans-serif;max-width:560px;color:#0b0b0b">' +
+    '<p>Ya están clasificados todos los movimientos de ' + esc(nombres.join(', ')) + '. Buen trabajo.</p>' + bloques +
+    (url ? '<p><a href="' + esc(url) + '" style="display:inline-block;background:#2a78d6;color:#fff;text-decoration:none;padding:10px 16px;border-radius:10px;font-weight:600">Revisar en la app</a></p>' : '') +
+    '<p style="color:#898781;font-size:12px">Presupuesto familiar · aviso automático al completar la clasificación de un mes.</p></div>';
+  var texto = 'Ya están clasificados todos los movimientos de ' + nombres.join(', ') + '.\n\n' +
+    veredictos.map(function (v) { return v.titulo + '\n' + v.texto; }).join('\n\n') + (url ? '\n\nRevisar en la app: ' + url : '');
+  MailApp.sendEmail({ to: to.join(','), subject: subject, htmlBody: html, body: texto, name: 'Presupuesto familiar' });
+  return true;
 }
 
 // --------------------------------------------------------------- informe en la hoja
@@ -683,7 +741,7 @@ function processFolder_(opts) {
   if (opts.soloSiNuevos && !report.length) return { archivos: [], stats: null };
   var c = commit_(movs);
   writeArchivos_(Object.keys(known).map(function (k) { return known[k]; }));
-  return { archivos: report, stats: c.stats };
+  return { archivos: report, stats: c.stats, completados: c.completados };
 }
 
 function extractId_(s) {
@@ -763,7 +821,7 @@ function apiClassify(ids, tipologia, opts) {
       });
     }
     var c = commit_(movs, { reglas: rules });
-    return { stats: c.stats, movimientos: c.movimientos, reglas: rules };
+    return { stats: c.stats, movimientos: c.movimientos, reglas: rules, completados: c.completados };
   });
 }
 
@@ -780,7 +838,7 @@ function apiAcceptSuggestions(ids) {
       m.tipologia = t; m.estado = 'manual'; m.asignada = t; m.modificado = now; m.autor = me;
     });
     var c = commit_(movs);
-    return { stats: c.stats, movimientos: c.movimientos };
+    return { stats: c.stats, movimientos: c.movimientos, completados: c.completados };
   });
 }
 
@@ -793,7 +851,7 @@ function apiSaveRules(rules) {
     });
     writeRules_(clean);
     var c = commit_(readMovs_(), { reglas: clean });
-    return { stats: c.stats, movimientos: c.movimientos, reglas: clean };
+    return { stats: c.stats, movimientos: c.movimientos, reglas: clean, completados: c.completados };
   });
 }
 
@@ -805,7 +863,7 @@ function apiSavePartidas(partidas) {
     });
     writePartidas_(clean);
     var c = commit_(readMovs_(), { partidas: clean });
-    return { partidas: clean, movimientos: c.movimientos };
+    return { partidas: clean, movimientos: c.movimientos, completados: c.completados };
   });
 }
 
@@ -840,7 +898,7 @@ function apiReclassify() {
   checkAccess_();
   return withLock_(function () {
     var c = commit_(readMovs_());
-    return { stats: c.stats, movimientos: c.movimientos };
+    return { stats: c.stats, movimientos: c.movimientos, completados: c.completados };
   });
 }
 

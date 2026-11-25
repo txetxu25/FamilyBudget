@@ -250,3 +250,28 @@ test('exportar cada conjunto de datos a hoja de Google y a .xlsx', () => {
   assert.throws(() => ctx.apiExport('interanual', 2026, 'sheets'), /No hay datos de 2025/);
   assert.throws(() => ctx.apiExport('otra cosa', 2026, 'sheets'), /No sé exportar/);
 });
+
+test('mes completado: la primera vez solo memoriza; al completar un mes se avisa por correo una sola vez', () => {
+  const ctx = setupCtx();
+  ctx.apiSaveConfig({ carpetaExtractos: 'ROOTFOLDERID_ABCDEFGHIJKLMNOPQ', anioActivo: '2026', usuarios: 'ana@example.com, luis@example.com' });
+  ctx.apiImportExcel('XL', 2026, 'reemplazar');
+  const r = ctx.apiProcessFolder();
+  assert.equal(r.completados.length, 0, 'la primera vez no se celebra lo que ya estaba completo');
+  assert.equal(ctx.__mails.length, 0);
+  const cfg = ctx.apiBootstrap().config;
+  assert.equal(cfg.mesesCompletos, JSON.stringify(['2026-02']), 'febrero ya estaba completo; enero tiene un pendiente');
+  // se clasifica lo que faltaba de enero
+  const bar = ctx.apiBootstrap().movimientos.find((m) => m.concepto === 'BAR PEPE');
+  const c = ctx.apiClassify([bar.id], 'Ocio', {});
+  assert.equal(c.completados.length, 1);
+  assert.equal(c.completados[0].nombre, 'Enero 2026');
+  assert.equal(c.completados[0].correo, true);
+  assert.ok(['ok', 'aviso', 'alerta'].indexOf(c.completados[0].tipo) >= 0);
+  assert.equal(ctx.__mails.length, 1);
+  assert.equal(ctx.__mails[0].to, 'ana@example.com,luis@example.com');
+  assert.match(ctx.__mails[0].subject, /Enero 2026 clasificado al 100/);
+  assert.match(ctx.__mails[0].htmlBody, /Enero 2026/);
+  // otra acción no vuelve a avisar
+  assert.equal(ctx.apiReclassify().completados.length, 0);
+  assert.equal(ctx.__mails.length, 1);
+});

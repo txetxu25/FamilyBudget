@@ -392,3 +392,31 @@ test('detectPriceIncreases: detecta la subida de una cuota y no confunde copagos
   assert.equal(FB.detectPriceIncreases(movs.concat([mov("2026-12-02", "OTRO", -1)])).length, 0);
   assert.equal(FB.detectPriceIncreases(movs, { meses: 1 }).length, 0);
 });
+
+test('classificationStatus y monthVerdict', () => {
+  const movs = [
+    mov('2026-01-05', 'SUPER', -100, { tipologia: 'Supermercado', estado: 'regla' }),
+    mov('2026-01-06', 'RARO', -40, { estado: 'pendiente' }),
+    mov('2026-02-05', 'SUPER', -150, { tipologia: 'Supermercado', estado: 'manual' }),
+    mov('2026-03-05', 'SUPER', -190, { tipologia: 'Supermercado', estado: 'regla' })
+  ];
+  const s = FB.classificationStatus(movs, 2026, '2026-03-10');
+  assert.equal(s.meses[0].pendiente, 1);
+  assert.equal(s.meses[0].importeSin, 40);
+  assert.equal(s.meses[0].completo, false);
+  assert.equal(s.meses[1].completo, true);
+  assert.equal(s.meses[2].completo, false, 'marzo aún no ha terminado');
+  assert.equal(s.total.revisados, 3);
+  assert.equal(s.pendientesPorComercio[0].comercio, 'RARO');
+  assert.equal(JSON.stringify(FB.completedMonths(movs, '2026-04-02')), JSON.stringify(['2026-02', '2026-03']));
+
+  const presupuesto = [{ anio: 2026, mes: 2, tipologia: 'Supermercado', importe: 150 }, { anio: 2026, mes: 3, tipologia: 'Supermercado', importe: 50 }];
+  const ok = FB.monthVerdict({ year: 2026, mes: 2, partidas: PARTIDAS, movimientos: movs, presupuesto });
+  assert.equal(ok.tipo, 'ok');
+  assert.match(ok.titulo, /Enhorabuena/);
+  const mal = FB.monthVerdict({ year: 2026, mes: 3, partidas: PARTIDAS, movimientos: movs, presupuesto });
+  assert.equal(mal.tipo, 'alerta');
+  assert.match(mal.titulo, /Atención: Marzo 2026/);
+  assert.match(mal.texto, /Supermercado/);
+  assert.equal(FB.monthVerdict({ year: 2026, mes: 1, partidas: PARTIDAS, movimientos: movs, presupuesto: [] }).tipo, 'sin-ppto');
+});

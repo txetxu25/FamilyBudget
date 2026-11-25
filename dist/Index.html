@@ -15,7 +15,7 @@
     --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781; --grid: #e1e0d9; --axis: #c3c2b7;
     --real: #2a78d6; --ppto: #b3b2ab; --accent: #2a78d6; --accent-ink: #ffffff;
     --good: #0ca30c; --good-ink: #006300; --warning: #fab219; --serious: #ec835a; --critical: #d03b3b;
-    --div-neg: #2a78d6; --div-mid: #f0efec; --div-pos: #e34948;
+    --div-neg: #2a78d6; --div-mid: #f0efec; --div-pos: #e34948; --series-3: #1baf7a;
     --radius: 14px; --shadow: 0 1px 2px rgba(0,0,0,.05), 0 4px 16px rgba(0,0,0,.04);
   }
   @media (prefers-color-scheme: dark) {
@@ -24,7 +24,7 @@
       --page: #0d0d0d; --surface: #1a1a19; --surface-2: #232322; --border: rgba(255,255,255,0.10);
       --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781; --grid: #2c2c2a; --axis: #383835;
       --real: #3987e5; --ppto: #5d5c57; --accent: #3987e5;
-      --good-ink: #0ca30c; --div-neg: #3987e5; --div-mid: #383835; --div-pos: #e66767;
+      --good-ink: #0ca30c; --div-neg: #3987e5; --div-mid: #383835; --div-pos: #e66767; --series-3: #199e70;
       --shadow: none;
     }
   }
@@ -116,6 +116,29 @@
   details.fold .fold-sum { display: block; margin: 2px 0 0; }
   details.fold[open] .fold-sum { display: none; }
   details.fold .fold-body { margin-top: 10px; }
+
+  /* clasificación */
+  .cbar { display: flex; gap: 2px; height: 14px; border-radius: 7px; overflow: hidden; margin: 6px 0 4px; }
+  .cseg { display: block; min-width: 3px; }
+  .c-regla { background: var(--real); } .c-manual { background: var(--series-3); }
+  .c-propuesta { background: repeating-linear-gradient(135deg, var(--real) 0 3px, color-mix(in srgb, var(--real) 30%, var(--surface)) 3px 6px); }
+  .c-pendiente { background: var(--ppto); }
+  .legend i.c-regla, .legend i.c-manual, .legend i.c-propuesta, .legend i.c-pendiente { display: inline-block; }
+  .cmeses { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; }
+  .cmes { border: 0; background: none; padding: 2px 0; display: flex; flex-direction: column; align-items: center; gap: 2px; cursor: pointer; color: var(--ink-2); font-size: 11px; }
+  .cmes.vacio { cursor: default; opacity: .5; }
+  .ctrack { width: 70%; max-width: 26px; height: 44px; border-radius: 6px; background: var(--surface-2); display: flex; align-items: flex-end; overflow: hidden; }
+  .cfill { display: block; width: 100%; background: var(--real); border-radius: 6px 6px 0 0; }
+  .cmes.completo .cfill { background: var(--good); }
+  .cmes.completo .cmes-v { color: var(--good-ink); font-weight: 700; }
+  .cpend { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 0; border-top: 1px solid var(--grid); }
+  .veredicto { border-radius: 12px; padding: 12px 14px; margin: 0 0 14px; border: 1px solid var(--border); background: var(--surface-2); }
+  .veredicto b { display: block; margin-bottom: 4px; }
+  .veredicto.ok { background: color-mix(in srgb, var(--good) 14%, var(--surface)); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+  .veredicto.aviso { background: color-mix(in srgb, var(--warning) 18%, var(--surface)); border-color: color-mix(in srgb, var(--warning) 50%, transparent); }
+  .veredicto.alerta { background: color-mix(in srgb, var(--critical) 12%, var(--surface)); border-color: color-mix(in srgb, var(--critical) 45%, transparent); }
+  .confeti { position: fixed; inset: 0; pointer-events: none; z-index: 70; }
+  .cargar { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; margin-bottom: 8px; }
 
   /* cards */
   .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
@@ -1058,6 +1081,106 @@ var FB = (function () {
     return out.sort(function (x, y) { return y.impactoAnual - x.impactoAnual; });
   }
 
+  // ------------------------------------------------- estado de la clasificación
+
+  var REVISADO = { regla: 1, manual: 1 };
+
+  /**
+   * Estado de la clasificación por mes de un año.
+   * Revisado = por regla o a mano. Las propuestas aún cuentan como "por revisar".
+   * Un mes está completo si tiene movimientos, ninguno por revisar y ya ha terminado
+   * (respecto a `hoy`, 'YYYY-MM-DD'): así no se da por cerrado un mes a medias.
+   */
+  function classificationStatus(movs, year, hoy) {
+    year = Number(year);
+    hoy = hoy || ymd(new Date());
+    var meses = [];
+    for (var i = 0; i < 12; i++) meses.push({ mes: i + 1, total: 0, regla: 0, manual: 0, propuesta: 0, pendiente: 0, importe: 0, importeSin: 0 });
+    var sinCom = {};
+    (movs || []).forEach(function (m) {
+      if (Number(m.fecha.slice(0, 4)) !== year) return;
+      var x = meses[Number(m.fecha.slice(5, 7)) - 1];
+      var est = m.estado === 'regla' || m.estado === 'manual' || m.estado === 'propuesta' ? m.estado : 'pendiente';
+      x.total++; x[est]++;
+      var a = Math.abs(m.importe);
+      x.importe += a;
+      if (!REVISADO[est]) {
+        x.importeSin += a;
+        var k = merchantKey(m);
+        var c = sinCom[k] = sinCom[k] || { comercio: k, n: 0, importe: 0, meses: {} };
+        c.n++; c.importe += a; c.meses[x.mes] = 1;
+      }
+    });
+    var tot = { total: 0, regla: 0, manual: 0, propuesta: 0, pendiente: 0, importe: 0, importeSin: 0 };
+    meses.forEach(function (x) {
+      x.revisados = x.regla + x.manual;
+      x.pct = x.total ? x.revisados / x.total : null;
+      x.pctImporte = x.importe ? 1 - x.importeSin / x.importe : null;
+      x.importe = round2(x.importe); x.importeSin = round2(x.importeSin);
+      var fin = ymd(new Date(year, x.mes, 0, 12)); // último día del mes
+      x.terminado = fin < hoy;
+      x.completo = x.total > 0 && x.revisados === x.total && x.terminado;
+      ['total', 'regla', 'manual', 'propuesta', 'pendiente', 'importe', 'importeSin'].forEach(function (k) { tot[k] += x[k]; });
+    });
+    tot.importe = round2(tot.importe); tot.importeSin = round2(tot.importeSin);
+    tot.revisados = tot.regla + tot.manual;
+    tot.pct = tot.total ? tot.revisados / tot.total : null;
+    tot.pctImporte = tot.importe ? 1 - tot.importeSin / tot.importe : null;
+    var comercios = Object.keys(sinCom).map(function (k) {
+      var c = sinCom[k]; c.importe = round2(c.importe); c.meses = Object.keys(c.meses).map(Number).sort(function (a, b) { return a - b; }); return c;
+    }).sort(function (a, b) { return b.importe - a.importe; });
+    return { year: year, meses: meses, total: tot, pendientesPorComercio: comercios };
+  }
+
+  /** Meses ('YYYY-MM') completos en todos los años con datos. */
+  function completedMonths(movs, hoy) {
+    var years = {};
+    (movs || []).forEach(function (m) { years[m.fecha.slice(0, 4)] = 1; });
+    var out = [];
+    Object.keys(years).sort().forEach(function (y) {
+      classificationStatus(movs, y, hoy).meses.forEach(function (x) { if (x.completo) out.push(y + '-' + (x.mes < 10 ? '0' : '') + x.mes); });
+    });
+    return out;
+  }
+
+  /**
+   * Veredicto de un mes frente al presupuesto: 'ok' (enhorabuena), 'aviso' o 'alerta' (atención),
+   * o 'sin-ppto' si ese año no tiene presupuesto. Se mira el gasto y el ahorro del mes.
+   */
+  function monthVerdict(opts) {
+    var year = Number(opts.year), mes = Number(opts.mes);
+    var s = summarize({ year: year, partidas: opts.partidas, movimientos: opts.movimientos, presupuesto: opts.presupuesto, hasta: 12, umbrales: opts.umbrales });
+    var i = mes - 1, T = s.totales;
+    var g = { real: round2(T.Gasto.real[i]), ppto: round2(T.Gasto.ppto[i]) };
+    var ing = { real: round2(T.Ingreso.real[i]), ppto: round2(T.Ingreso.ppto[i]) };
+    var neto = { real: round2(s.neto.real[i]), ppto: round2(s.neto.ppto[i]) };
+    var nombre = MESES[i].charAt(0).toUpperCase() + MESES[i].slice(1) + ' ' + year;
+    var hayPpto = g.ppto > 0 || ing.ppto > 0;
+    var top = topDeviations({ year: year, partidas: opts.partidas, movimientos: opts.movimientos, presupuesto: opts.presupuesto, desde: mes, hasta: mes,
+      umbrales: opts.umbrales, minimo: (opts.umbrales && opts.umbrales.minimo) || 50, limit: 3 }).filter(function (e) { return e.impacto > 0; });
+    if (!hayPpto) {
+      return { tipo: 'sin-ppto', mes: mes, year: year, nombre: nombre, gasto: g, ingreso: ing, neto: neto, top: [],
+        titulo: nombre + ' está clasificado', texto: 'Gastasteis ' + fmt(g.real) + ' e ingresasteis ' + fmt(ing.real) + '. Este año no tiene presupuesto con el que comparar.' };
+    }
+    var estGasto = status('Gasto', g.real, g.ppto, opts.umbrales);
+    var estNeto = status('Ingreso', neto.real, neto.ppto, opts.umbrales);
+    var rank = { ok: 0, 'sin-ppto': 1, aviso: 1, alerta: 2 };
+    var tipo = rank[estGasto] >= rank[estNeto] ? estGasto : estNeto;
+    if (tipo === 'sin-ppto') tipo = 'aviso';
+    var dg = round2(g.real - g.ppto);
+    var base = 'Gasto ' + fmt(g.real) + ' frente a ' + fmt(g.ppto) + ' previstos (' + fmtSigned(dg) + '); ahorro ' + fmt(neto.real) + ' frente a ' + fmt(neto.ppto) + '.';
+    var lista = top.map(function (e) { return e.tipologia + ' (' + fmtSigned(e.impacto) + ')'; }).join(', ');
+    var titulo, texto;
+    if (tipo === 'ok') {
+      titulo = '¡Enhorabuena! ' + nombre + ' cerró en línea con el presupuesto';
+      texto = base + (dg < 0 ? ' Gastasteis menos de lo previsto.' : '');
+    } else {
+      titulo = (tipo === 'alerta' ? 'Atención: ' : 'Ojo: ') + nombre + ' se ha desviado del presupuesto';
+      texto = base + (lista ? ' Lo que más pesa: ' + lista + '.' : '');
+    }
+    return { tipo: tipo, mes: mes, year: year, nombre: nombre, gasto: g, ingreso: ing, neto: neto, top: top, titulo: titulo, texto: texto };
+  }
+
   // ---------------------------------------------------- asistente de presupuesto
 
   /**
@@ -1445,6 +1568,7 @@ var FB = (function () {
     realByLine: realByLine, budgetByLine: budgetByLine, lastMonthWithData: lastMonthWithData, status: status,
     summarize: summarize, forecast: forecast, detectManualEdits: detectManualEdits,
     compareYears: compareYears, proposeBudget: proposeBudget, detectPriceIncreases: detectPriceIncreases,
+    classificationStatus: classificationStatus, completedMonths: completedMonths, monthVerdict: monthVerdict,
     explainLine: explainLine, topDeviations: topDeviations,
     importFromBudgetWorkbook: importFromBudgetWorkbook, fmt: fmt, fmtSigned: fmtSigned
   };
@@ -1470,8 +1594,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
   function api(fn) {
     var args = Array.prototype.slice.call(arguments, 1);
     return new Promise(function (resolve, reject) {
-      if (window.__MOCK_API__) return window.__MOCK_API__(fn, args).then(resolve, reject);
-      var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function (e) { reject(e && e.message ? e : new Error(String(e))); });
+      if (window.__MOCK_API__) return window.__MOCK_API__(fn, args).then(function (res) { resolve(res); if (res && res.completados && res.completados.length) setTimeout(function () { celebrar(res.completados); }, 350); }, reject);
+      var done = function (res) { resolve(res); if (res && res.completados && res.completados.length) setTimeout(function () { celebrar(res.completados); }, 350); };
+      var r = google.script.run.withSuccessHandler(done).withFailureHandler(function (e) { reject(e && e.message ? e : new Error(String(e))); });
       r[fn].apply(r, args);
     });
   }
@@ -1744,7 +1869,9 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     var sm = FB.summarize(Object.assign({ hasta: hasta }, base));
     var fc = FB.forecast(Object.assign({ hasta: hasta }, base));
     var fcBy = {}; fc.filas.forEach(function (f) { fcBy[f.tipologia] = f; });
-    var acum = S.seg.modo === 'acum', d0 = acum ? 0 : hasta - 1, d1 = hasta - 1;
+    var acum = S.seg.modo === 'acum';
+    var desde = acum ? Math.min(S.seg.desde || 1, hasta) : hasta;
+    var d0 = desde - 1, d1 = hasta - 1;
     var T = sm.totales;
     var g = { r: sumR(T.Gasto.real, d0, d1), p: sumR(T.Gasto.ppto, d0, d1) };
     var ing = { r: sumR(T.Ingreso.real, d0, d1), p: sumR(T.Ingreso.ppto, d0, d1) };
@@ -1753,18 +1880,26 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     var integ = FB.checkBalance(S.data.movimientos.filter(function (m) { return m.fecha.slice(0, 4) === String(S.year); }));
     var saldo = null, lastMov = null;
     FB.chronoSort(S.data.movimientos).forEach(function (m) { if (m.saldo != null) { saldo = m.saldo; lastMov = m.fecha; } });
-    var periodo = acum ? 'enero – ' + mesLabel(hasta) : mesLabel(hasta);
+    var periodo = desde === hasta ? mesLabel(hasta) : mesLabel(desde) + ' – ' + mesLabel(hasta);
+    var mesOpts = function (sel, max) { return FB.MESES.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === sel ? ' selected' : '') + (max && i + 1 > max ? ' disabled' : '') + '>' + m + '</option>'; }).join(''); };
 
     var h = '<div class="row spread" style="margin-bottom:12px">' +
       '<div class="seg" role="group" aria-label="Periodo"><button data-m="acum" aria-pressed="' + acum + '">Acumulado</button><button data-m="mes" aria-pressed="' + !acum + '">Solo el mes</button></div>' +
-      '<label class="row small">hasta <select id="seg-hasta">' + FB.MESES.map(function (m, i) { return '<option value="' + (i + 1) + '"' + (i + 1 === hasta ? ' selected' : '') + '>' + m + '</option>'; }).join('') + '</select></label></div>';
+      (acum
+        ? '<div class="row small"><label class="row">de <select id="seg-desde">' + mesOpts(desde, hasta) + '</select></label><label class="row">a <select id="seg-hasta">' + mesOpts(hasta) + '</select></label></div>'
+        : '<label class="row small">Mes <select id="seg-hasta">' + mesOpts(hasta) + '</select></label>') + '</div>';
 
     if (!integ.ok) {
       h += '<div class="banner"><b>Los saldos no cuadran.</b> ' + integ.roturas.map(function (r) {
         return 'El ' + r.fecha.split('-').reverse().join('/') + ' el banco arranca con ' + eur(r.saldoBanco, 1) + ' pero los extractos llevan ' + eur(r.saldoEsperado, 1) + ' (' + eurS(r.diferencia) + '). Falta algún movimiento entre extractos.';
       }).join(' ') + '</div>';
     }
-    if (pend) h += '<div class="banner" style="cursor:pointer" id="go-pend"><b>' + pend + ' movimientos por revisar.</b> Hasta que los clasifiquéis cuentan en «Sin clasificar» y no entran en la previsión. Revisar →</div>';
+    // veredicto del mes (cuando se mira un mes ya clasificado del todo)
+    var cst = FB.classificationStatus(S.data.movimientos, S.year);
+    if (!acum && cst.meses[hasta - 1].completo) {
+      var ver = FB.monthVerdict({ year: S.year, mes: hasta, partidas: S.data.partidas, movimientos: S.data.movimientos, presupuesto: S.data.presupuesto, umbrales: U });
+      h += '<div class="veredicto ' + ver.tipo + '"><b>' + (ver.tipo === 'ok' ? '🎉 ' : ver.tipo === 'sin-ppto' ? '✔ ' : '⚠ ') + esc(ver.titulo) + '</b><div>' + esc(ver.texto) + '</div></div>';
+    }
 
     var kpi = function (label, real, ppto, tipo, foot) {
       var d = real - ppto, est = FB.status(tipo, real, ppto, U);
@@ -1781,8 +1916,10 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       '<div class="foot"><span class="num">Ppto ' + eur(fc.neto.pptoAnual) + ' · ' + eurS(fc.neto.cierre - fc.neto.pptoAnual) + '</span>' + stChip(estCierre) + '</div>' +
       '<div class="foot" style="margin-top:4px">Extrapolado de lo ocurrido hasta ' + mesLabel(hasta) + '</div></div></div>';
 
+    h += clasificacionHtml(cst);
+
     // ---- qué está pasando (insights)
-    var top = FB.topDeviations(Object.assign({ desde: acum ? 1 : hasta, hasta: hasta, minimo: U.minimo, limit: 10 }, base));
+    var top = FB.topDeviations(Object.assign({ desde: desde, hasta: hasta, minimo: U.minimo, limit: 10 }, base));
     top.forEach(function (e) { var f = fcBy[e.tipologia]; if (f) { e.cierre = f.cierre; e.pptoAnual = f.pptoAnual; } });
     var peor = top.filter(function (e) { return e.impacto > 0; }), mejor = top.filter(function (e) { return e.impacto < 0; });
     var dn = net.r - net.p, dc = fc.neto.cierre - fc.neto.pptoAnual;
@@ -1791,8 +1928,8 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       '<p class="sub" style="margin-bottom:0">Al ritmo actual cerraréis el año con ' + eur(fc.neto.cierre) + ' de ahorro, ' + (dc >= 0 ? eur(dc) + ' por encima' : eur(-dc) + ' por debajo') + ' de lo presupuestado.' +
       (palancas.length ? ' Lo que más empuja en contra: ' + palancas.map(function (p) { return esc(p.tipologia) + ' (' + eurS(-p.impacto) + ')'; }).join(', ') + '.' : '') + '</p></div>';
     var MAX = S.seg.verTodas ? 99 : 3;
-    if (peor.length) h += '<h2 class="section">En contra</h2>' + peor.slice(0, MAX).map(function (e) { return insightCard(e, acum ? 1 : hasta, hasta); }).join('');
-    if (mejor.length) h += '<h2 class="section">A favor</h2>' + mejor.slice(0, S.seg.verTodas ? 99 : 2).map(function (e) { return insightCard(e, acum ? 1 : hasta, hasta); }).join('');
+    if (peor.length) h += '<h2 class="section">En contra</h2>' + peor.slice(0, MAX).map(function (e) { return insightCard(e, desde, hasta); }).join('');
+    if (mejor.length) h += '<h2 class="section">A favor</h2>' + mejor.slice(0, S.seg.verTodas ? 99 : 2).map(function (e) { return insightCard(e, desde, hasta); }).join('');
     if (peor.length > 3 || mejor.length > 2) h += '<div class="row" style="justify-content:center;margin:-4px 0 14px"><button class="btn small ghost" id="ver-todas">' + (S.seg.verTodas ? 'Ver menos' : 'Ver todas las desviaciones (' + top.length + ')') + '</button></div>';
     if (!top.length) h += '<p class="empty">Ninguna partida se desvía más de ' + eur(U.minimo) + ' en este periodo.</p>';
 
@@ -1822,7 +1959,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       '<div class="chart">' + lineChart(cr, cp, sm.hasta, 'Ahorro acumulado real, previsto y presupuestado') + '</div></div></div>';
 
     // ---- frente al año anterior
-    var cmp = FB.compareYears({ year: S.year, partidas: S.data.partidas, movimientos: S.data.movimientos, desde: acum ? 1 : hasta, hasta: hasta });
+    var cmp = FB.compareYears({ year: S.year, partidas: S.data.partidas, movimientos: S.data.movimientos, desde: desde, hasta: hasta });
     if (cmp) h += interanualHtml(cmp, periodo);
 
     h += '<div class="card"><h2>Desviaciones por bloque y mes</h2><p class="sub">Rojo: peor que lo previsto (gastáis más o ingresáis menos). Azul: mejor. Gris: en línea.</p>' + heatmap(sm.bloques, sm.hasta) + '</div>';
@@ -1831,7 +1968,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     var order = { Ingreso: 0, Gasto: 1, Traspaso: 2 };
     var bl = sm.bloques.slice().sort(function (x, y) { return order[x.tipo] - order[y.tipo] || Math.abs(y.desvYTD) - Math.abs(x.desvYTD); });
     var filas = {}; sm.filas.forEach(function (f) { filas[f.tipologia] = f; });
-    h += '<div class="card"><h2>Detalle ' + (acum ? 'acumulado hasta ' + mesLabel(hasta) : 'de ' + mesLabel(hasta)) + ' y cierre previsto</h2><p class="sub">Toca un bloque para abrirlo y una partida para ver por qué se desvía y cómo se ha previsto.</p>' +
+    h += '<div class="card"><h2>Detalle ' + periodo + ' y cierre previsto</h2><p class="sub">Toca un bloque para abrirlo y una partida para ver por qué se desvía y cómo se ha previsto.</p>' +
       '<div class="tbl-wrap"><table><thead><tr><th>Partida</th><th>Real</th><th>Ppto</th><th>Desv.</th><th></th><th>Cierre prev.</th><th>Ppto año</th><th>Desv. cierre</th></tr></thead><tbody>';
     bl.forEach(function (bq, bi) {
       var r = sumR(bq.real, d0, d1), p = sumR(bq.ppto, d0, d1);
@@ -1851,7 +1988,12 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     v.innerHTML = h;
 
     $$('.seg button', v).forEach(function (bt) { bt.onclick = function () { S.seg.modo = bt.getAttribute('data-m'); render(); }; });
-    $('#seg-hasta').onchange = function () { S.seg.hasta = Number(this.value); render(); };
+    $$('details[data-fold]', v).forEach(function (d) { d.addEventListener('toggle', function () { S.open = S.open || {}; S.open[d.getAttribute('data-fold')] = d.open; }); });
+    $('#seg-hasta').onchange = function () { S.seg.hasta = Number(this.value); if ((S.seg.desde || 1) > S.seg.hasta) S.seg.desde = S.seg.hasta; render(); };
+    if ($('#seg-desde')) $('#seg-desde').onchange = function () { S.seg.desde = Number(this.value); render(); };
+    if ($('#clasif-go')) $('#clasif-go').onclick = function () { go('movimientos', { filtro: 'pendientes', mes: 0, partida: '', q: '' }); };
+    $$('[data-clasif-mes]', v).forEach(function (el) { el.onclick = function () { go('movimientos', { filtro: 'pendientes', mes: Number(el.getAttribute('data-clasif-mes')), partida: '', q: '' }); }; });
+    $$('[data-clasif-q]', v).forEach(function (el) { el.onclick = function () { go('movimientos', { filtro: 'pendientes', mes: 0, partida: '', q: el.getAttribute('data-clasif-q') }); }; });
     if ($('#go-pend')) $('#go-pend').onclick = function () { go('movimientos', { filtro: 'pendientes', mes: 0 }); };
     if ($('#cmp-pend')) $('#cmp-pend').onclick = function () { S.year = S.year - 1; $('#year').value = String(S.year); S.seg.hasta = null; go('movimientos', { filtro: 'pendientes', mes: 0, partida: '', q: '' }); };
     $$('button[data-visto]', v).forEach(function (bt) {
@@ -1869,7 +2011,71 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     $$('tr.block', v).forEach(function (tr) {
       tr.onclick = function () { var bi = tr.getAttribute('data-b'); $$('tr[data-pb="' + bi + '"]', v).forEach(function (x) { x.hidden = !x.hidden; }); };
     });
-    $$('tr.line', v).forEach(function (tr) { tr.onclick = function () { openExplain(tr.getAttribute('data-t'), acum ? 1 : hasta, hasta, fcBy[tr.getAttribute('data-t')]); }; });
+    $$('tr.line', v).forEach(function (tr) { tr.onclick = function () { openExplain(tr.getAttribute('data-t'), desde, hasta, fcBy[tr.getAttribute('data-t')]); }; });
+  }
+
+  // ---- estado de la clasificación
+  var ESTADO_COLOR = { regla: 'var(--real)', manual: 'var(--series-3)', propuesta: 'url(#hatch)', pendiente: 'var(--ppto)' };
+  function clasificacionHtml(cst) {
+    var t = cst.total;
+    if (!t.total) return '';
+    var pct = Math.round(100 * t.pct), pend = t.propuesta + t.pendiente;
+    var resumen = pct + ' % revisado' + (pend ? ' · ' + pend + ' por revisar · ' + eur(t.importeSin) + ' sin revisar' : ' · todo al día');
+    var segs = [['regla', 'Por regla'], ['manual', 'A mano'], ['propuesta', 'Propuesta sin revisar'], ['pendiente', 'Sin clasificar']];
+    var barra = '<div class="cbar" role="img" aria-label="' + esc(resumen) + '">' + segs.map(function (sg) {
+      var n = t[sg[0]]; if (!n) return '';
+      return '<span class="cseg c-' + sg[0] + '" style="flex:' + n + '" data-tip="' + esc(tipRows(sg[1], [['Movimientos', String(n)], ['Del total', Math.round(100 * n / t.total) + ' %']])) + '"></span>';
+    }).join('') + '</div><div class="legend">' + segs.map(function (sg) { return '<span><i class="c-' + sg[0] + '"></i>' + sg[1] + ' ' + t[sg[0]] + '</span>'; }).join('') + '</div>';
+    var meses = '<div class="cmeses">' + cst.meses.map(function (x) {
+      var h0 = x.total ? Math.round(100 * x.pct) : 0;
+      var tip = tipRows(mesLabel(x.mes), x.total ? [['Movimientos', String(x.total)], ['Revisados', h0 + ' %'], ['Por revisar', String(x.propuesta + x.pendiente)], ['Importe sin revisar', eur(x.importeSin)]] : [['Sin movimientos', '']]);
+      return '<button class="cmes' + (x.completo ? ' completo' : '') + (!x.total ? ' vacio' : '') + '"' + (x.total && !x.completo ? ' data-clasif-mes="' + x.mes + '"' : '') + ' data-tip="' + esc(tip) + '">' +
+        '<span class="ctrack"><span class="cfill" style="height:' + h0 + '%"></span></span>' +
+        '<span class="cmes-l">' + FB.MESES_CORTO[x.mes - 1] + '</span><span class="cmes-v num">' + (!x.total ? '—' : x.completo ? '✓' : h0 + '%') + '</span></button>';
+    }).join('') + '</div>';
+    var top = cst.pendientesPorComercio.slice(0, 5);
+    var lista = top.length ? '<div class="small" style="margin-top:10px"><b>Dónde está lo pendiente</b>' + top.map(function (c) {
+      return '<div class="cpend"><span>' + esc(c.comercio) + ' <span class="muted">· ' + c.n + '× · ' + c.meses.map(function (m) { return FB.MESES_CORTO[m - 1]; }).join(', ') + '</span></span>' +
+        '<span class="num">' + eur(c.importe) + ' <button class="btn small ghost" data-clasif-q="' + esc(c.comercio) + '">Revisar</button></span></div>';
+    }).join('') + '</div>' : '';
+    S.open = S.open || {};
+    var open = S.open.clasif !== undefined ? S.open.clasif : pend > 0;
+    return '<details class="card fold" data-fold="clasif"' + (open ? ' open' : '') + '><summary><span><h2>Clasificación ' + S.year + '</h2><span class="sub fold-sum">' + esc(resumen) + '</span></span></summary><div class="fold-body">' +
+      '<p class="sub">' + esc(resumen) + '. Un mes se da por cerrado (✓) cuando todo está revisado y el mes ha terminado; entonces os llega un correo con el resumen.</p>' +
+      '<svg width="0" height="0" style="position:absolute">' + HATCH + '</svg>' + barra +
+      '<h3 class="small" style="margin:12px 0 4px">Por mes <span class="muted">(toca un mes para revisar sus pendientes)</span></h3>' + meses + lista +
+      (pend ? '<div class="row" style="margin-top:10px"><button class="btn primary small" id="clasif-go">Ir a la bandeja (' + pend + ')</button></div>' : '') + '</div></details>';
+  }
+
+  // ---- celebración al completar un mes
+  function confeti() {
+    if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var c = document.createElement('canvas');
+    c.className = 'confeti'; document.body.appendChild(c);
+    var W = c.width = window.innerWidth, H = c.height = window.innerHeight, ctx = c.getContext('2d');
+    var cols = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#6250d6'];
+    var ps = []; for (var i = 0; i < 140; i++) ps.push({ x: W / 2 + (Math.random() - 0.5) * W * 0.3, y: H * 0.35, vx: (Math.random() - 0.5) * 12, vy: -Math.random() * 12 - 4, r: Math.random() * 6 + 4, a: Math.random() * 6, va: (Math.random() - 0.5) * 0.3, c: cols[i % cols.length] });
+    var t0 = performance.now();
+    (function frame(t) {
+      ctx.clearRect(0, 0, W, H);
+      ps.forEach(function (p) { p.vy += 0.35; p.vx *= 0.99; p.x += p.vx; p.y += p.vy; p.a += p.va; ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.a); ctx.fillStyle = p.c; ctx.fillRect(-p.r / 2, -p.r / 4, p.r, p.r / 2); ctx.restore(); });
+      if (t - t0 < 2600) requestAnimationFrame(frame); else c.remove();
+    })(t0);
+  }
+  function celebrar(veredictos) {
+    if (!veredictos || !veredictos.length) return;
+    $('#toast').style.display = 'none';
+    confeti();
+    openSheet('<div class="row spread"><h2>🎉 ' + (veredictos.length === 1 ? veredictos[0].nombre + ' clasificado' : veredictos.length + ' meses clasificados') + '</h2><button class="btn small ghost" data-close>Cerrar</button></div>' +
+      '<p class="sub">Todos los movimientos están revisados. ' + (veredictos[0].correo ? 'Hemos enviado un correo a los usuarios autorizados con este resumen.' : 'No se ha podido enviar el correo de aviso (revisa los permisos de la app).') + '</p>' +
+      veredictos.map(function (ver) { return '<div class="veredicto ' + ver.tipo + '"><b>' + esc(ver.titulo) + '</b><div>' + esc(ver.texto) + '</div></div>'; }).join('') +
+      '<div class="row" style="margin-top:12px"><button class="btn primary" id="cel-ver">Ver ' + (veredictos.length === 1 ? veredictos[0].nombre : 'el seguimiento') + '</button></div>',
+      function (sh) {
+        $('#cel-ver', sh).onclick = function () {
+          var v0 = veredictos[veredictos.length - 1];
+          closeSheet(); S.year = v0.year; $('#year').value = String(v0.year); S.seg.modo = 'mes'; S.seg.hasta = v0.mes; go('seguimiento');
+        };
+      });
   }
 
   function interanualHtml(cmp, periodo) {
@@ -2299,20 +2505,22 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
     var h = fold('extractos', 'Extractos',
       '<p class="sub">Deja los .xls del banco en la carpeta de Drive, con una subcarpeta por año. La app lee todos los años, ignora lo repetido y clasifica. El presupuesto de cada año va en <b>Presupuesto_AAAA</b>, dentro de la carpeta de su año.</p>' +
       '<label class="field">Carpeta de extractos (enlace o ID de Drive)<input type="text" id="cf-folder" value="' + esc(c.carpetaExtractos) + '"></label>' +
-      '<div class="row" style="margin-top:10px"><button class="btn primary" id="cf-process">Procesar ahora</button></div>' +
-      '<label class="field" style="margin-top:14px">Procesado automático<select id="cf-auto">' +
-      ['mensual', 'diario', 'no'].map(function (k) { return '<option value="' + k + '"' + (k === modo ? ' selected' : '') + '>' + AUTO_TXT[k] + '</option>'; }).join('') + '</select></label>' +
-      '<p class="small muted" style="margin:6px 0 0">' + (modo === 'mensual'
-        ? 'Ojo: el día 1 solo se procesa lo que ya esté en la carpeta. Si subes el extracto de un mes más tarde, entrará el día 1 siguiente (o pulsa Procesar ahora). "Cada día" no tiene ese retraso y no hace nada si no hay ficheros nuevos.'
-        : modo === 'diario' ? 'Si no hay ficheros nuevos no se toca nada.' : 'Tendrás que pulsar Procesar ahora cada vez que subas un extracto.') + '</p>',
-      true, AUTO_TXT[modo]);
-
-    h += fold('integridad', 'Integridad y ficheros', (integ.ok ? '<p class="sub">✔ La cadena de saldos cuadra en los ' + integ.revisados + ' movimientos.</p>' :
-      '<div class="banner">' + integ.roturas.map(function (r) { return '<div>' + r.fecha.split('-').reverse().join('/') + ': el banco arranca con ' + eur(r.saldoBanco, 1) + ' y los extractos acaban en ' + eur(r.saldoEsperado, 1) + ' (' + eurS(r.diferencia) + ').</div>'; }).join('') +
+      '<h3 class="small" style="margin:14px 0 6px">Cuándo cargar</h3>' +
+      '<div class="cargar"><div><b>Ahora</b><div class="small muted">Lee los ficheros nuevos de la carpeta.</div></div><button class="btn primary" id="cf-process">Cargar ahora</button></div>' +
+      '<div class="cargar"><div style="flex:1"><b>Automáticamente</b><select id="cf-auto" style="width:100%;margin-top:4px">' +
+      ['mensual', 'diario', 'no'].map(function (k) { return '<option value="' + k + '"' + (k === modo ? ' selected' : '') + '>' + AUTO_TXT[k] + '</option>'; }).join('') + '</select>' +
+      '<div class="small muted" style="margin-top:4px">' + (modo === 'mensual'
+        ? 'El día 1 solo entra lo que ya esté en la carpeta: si subes el extracto más tarde, entrará el día 1 siguiente (o pulsa Cargar ahora). "Cada día" no tiene ese retraso y no hace nada si no hay ficheros nuevos.'
+        : modo === 'diario' ? 'Si no hay ficheros nuevos no se toca nada.' : 'Tendrás que pulsar Cargar ahora cada vez que subas un extracto.') + '</div></div></div>' +
+      '<p class="small" style="margin:12px 0 0">Cada carga actualiza la hoja de Google (Movimientos, Resumen e Insights). ' +
+      (S.data.hojaUrl ? '<a href="' + esc(S.data.hojaUrl) + '" target="_blank" rel="noopener">Ver la hoja</a> · ' : '') + '<a href="#" id="cf-recalc">Recalcular tras editarla a mano</a></p>' +
+      '<h3 class="small" style="margin:16px 0 6px">Integridad</h3>' +
+      (integ.ok ? '<p class="small" style="margin:0">✔ La cadena de saldos cuadra en los ' + integ.revisados + ' movimientos.</p>' :
+        '<div class="banner">' + integ.roturas.map(function (r) { return '<div>' + r.fecha.split('-').reverse().join('/') + ': el banco arranca con ' + eur(r.saldoBanco, 1) + ' y los extractos acaban en ' + eur(r.saldoEsperado, 1) + ' (' + eurS(r.diferencia) + ').</div>'; }).join('') +
         '<div class="small" style="margin-top:6px">Suele ser un extracto que se descargó antes de acabar el mes. Vuelve a descargar ese mes completo y deja el fichero en la carpeta: los repetidos se ignoran.</div></div>') +
-      '<div class="small" style="margin-top:6px"><b>Ficheros procesados (' + S.data.archivos.length + ')</b>' +
-      S.data.archivos.map(function (a) { return '<div>' + esc(a.carpeta) + '/' + esc(a.nombre) + ' — ' + esc(a.resultado) + ' · ' + esc(a.nuevos) + ' nuevos de ' + esc(a.movimientos) + '</div>'; }).join('') + '</div>',
-      !integ.ok, integ.ok ? '✔ Saldos cuadrados' : '⚠ ' + integ.roturas.length + ' hueco(s) entre extractos');
+      '<details style="margin-top:8px"><summary class="small">Ficheros cargados (' + S.data.archivos.length + ')</summary><div class="small" style="margin-top:6px">' +
+      S.data.archivos.map(function (a) { return '<div>' + esc(a.carpeta) + '/' + esc(a.nombre) + ' — ' + esc(a.resultado) + ' · ' + esc(a.nuevos) + ' nuevos de ' + esc(a.movimientos) + '</div>'; }).join('') + '</div></details>',
+      true, AUTO_TXT[modo] + (integ.ok ? ' · saldos ✔' : ' · ⚠ ' + integ.roturas.length + ' hueco(s)'));
 
     h += fold('seguimiento', 'Seguimiento',
       '<p class="sub">Año que se abre por defecto y cuándo una desviación se marca como "Vigilar" o "Desviado".</p>' +
@@ -2329,13 +2537,6 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       '<label class="field">Usuarios permitidos (emails separados por comas)<input type="text" id="cf-users" value="' + esc(c.usuarios) + '"></label>' +
       '<div class="row" style="margin-top:10px"><button class="btn primary" id="cf-save-acc">Guardar</button><span class="small muted">Conectado como ' + esc(S.data.usuario || '—') + '</span></div>',
       false, (c.usuarios ? c.usuarios.split(/[,;\s]+/).filter(Boolean).length + ' usuario(s)' : 'Sin restricción'));
-
-    h += fold('hoja', 'La hoja de cálculo',
-      '<p class="sub">El libro tiene las pestañas Movimientos, Reglas_Categorizacion y Maestro_Tipologias, más Resumen e Insights, que escribe la app. ' +
-      '<b>Resumen e Insights se actualizan solos</b> cada vez que se procesan extractos (con el botón o de forma automática) o cambiáis algo desde la app. ' +
-      'Solo hace falta recalcular si editáis la hoja a mano (por ejemplo, una partida o un gasto en efectivo).</p>' +
-      '<div class="row">' + (S.data.hojaUrl ? '<a class="btn" href="' + esc(S.data.hojaUrl) + '" target="_blank" rel="noopener">Abrir la hoja</a>' : '') + '<button class="btn" id="cf-recalc">Recalcular tras editar a mano</button></div>',
-      false, 'Resumen e Insights automáticos');
 
     var ys = years();
     h += fold('exportar', 'Exportar datos',
@@ -2372,7 +2573,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
         var nuevos = r.archivos.reduce(function (s, a) { return s + (a.nuevos || 0); }, 0);
         var errs = r.archivos.filter(function (a) { return /^error/.test(a.resultado); });
         return reload().then(function () {
-          toast(r.archivos.length ? r.archivos.length + ' fichero(s) leídos, ' + nuevos + ' movimientos nuevos.' + (errs.length ? ' ' + errs.length + ' con error: ' + errs.map(function (e) { return e.nombre + ' (' + e.resultado + ')'; }).join('; ') : '') : 'No hay ficheros nuevos.', 7000);
+          toast(r.archivos.length ? r.archivos.length + ' fichero(s) cargados, ' + nuevos + ' movimientos nuevos.' + (errs.length ? ' ' + errs.length + ' con error: ' + errs.map(function (e) { return e.nombre + ' (' + e.resultado + ')'; }).join('; ') : '') : 'No hay ficheros nuevos.', 7000);
         });
       }).catch(fail);
     };
@@ -2392,7 +2593,7 @@ if (typeof module !== 'undefined' && module.exports) module.exports = FB;
       if (lista.trim() && me && lista.indexOf(me) < 0 && !confirm('Tu cuenta (' + me + ') no está en la lista: dejarás de poder abrir la app. ¿Seguro?')) return;
       save({ usuarios: $('#cf-users').value }, 'Usuarios guardados.');
     };
-    $('#cf-recalc').onclick = function () { busy(true); api('apiReclassify').then(function (r) { S.data.movimientos = r.movimientos; busy(false); toast('Resumen e insights de la hoja actualizados.'); render(); }, fail); };
+    $('#cf-recalc').onclick = function (e) { e.preventDefault(); busy(true); api('apiReclassify').then(function (r) { S.data.movimientos = r.movimientos; busy(false); toast('Resumen e insights de la hoja actualizados.'); render(); }, fail); };
     $('#ex-go').onclick = function () {
       busy(true);
       api('apiExport', $('#ex-tipo').value, Number($('#ex-anio').value), $('#ex-fmt').value).then(function (r) {

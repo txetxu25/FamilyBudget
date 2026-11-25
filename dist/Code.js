@@ -834,6 +834,106 @@ var FB = (function () {
     return out.sort(function (x, y) { return y.impactoAnual - x.impactoAnual; });
   }
 
+  // ------------------------------------------------- estado de la clasificación
+
+  var REVISADO = { regla: 1, manual: 1 };
+
+  /**
+   * Estado de la clasificación por mes de un año.
+   * Revisado = por regla o a mano. Las propuestas aún cuentan como "por revisar".
+   * Un mes está completo si tiene movimientos, ninguno por revisar y ya ha terminado
+   * (respecto a `hoy`, 'YYYY-MM-DD'): así no se da por cerrado un mes a medias.
+   */
+  function classificationStatus(movs, year, hoy) {
+    year = Number(year);
+    hoy = hoy || ymd(new Date());
+    var meses = [];
+    for (var i = 0; i < 12; i++) meses.push({ mes: i + 1, total: 0, regla: 0, manual: 0, propuesta: 0, pendiente: 0, importe: 0, importeSin: 0 });
+    var sinCom = {};
+    (movs || []).forEach(function (m) {
+      if (Number(m.fecha.slice(0, 4)) !== year) return;
+      var x = meses[Number(m.fecha.slice(5, 7)) - 1];
+      var est = m.estado === 'regla' || m.estado === 'manual' || m.estado === 'propuesta' ? m.estado : 'pendiente';
+      x.total++; x[est]++;
+      var a = Math.abs(m.importe);
+      x.importe += a;
+      if (!REVISADO[est]) {
+        x.importeSin += a;
+        var k = merchantKey(m);
+        var c = sinCom[k] = sinCom[k] || { comercio: k, n: 0, importe: 0, meses: {} };
+        c.n++; c.importe += a; c.meses[x.mes] = 1;
+      }
+    });
+    var tot = { total: 0, regla: 0, manual: 0, propuesta: 0, pendiente: 0, importe: 0, importeSin: 0 };
+    meses.forEach(function (x) {
+      x.revisados = x.regla + x.manual;
+      x.pct = x.total ? x.revisados / x.total : null;
+      x.pctImporte = x.importe ? 1 - x.importeSin / x.importe : null;
+      x.importe = round2(x.importe); x.importeSin = round2(x.importeSin);
+      var fin = ymd(new Date(year, x.mes, 0, 12)); // último día del mes
+      x.terminado = fin < hoy;
+      x.completo = x.total > 0 && x.revisados === x.total && x.terminado;
+      ['total', 'regla', 'manual', 'propuesta', 'pendiente', 'importe', 'importeSin'].forEach(function (k) { tot[k] += x[k]; });
+    });
+    tot.importe = round2(tot.importe); tot.importeSin = round2(tot.importeSin);
+    tot.revisados = tot.regla + tot.manual;
+    tot.pct = tot.total ? tot.revisados / tot.total : null;
+    tot.pctImporte = tot.importe ? 1 - tot.importeSin / tot.importe : null;
+    var comercios = Object.keys(sinCom).map(function (k) {
+      var c = sinCom[k]; c.importe = round2(c.importe); c.meses = Object.keys(c.meses).map(Number).sort(function (a, b) { return a - b; }); return c;
+    }).sort(function (a, b) { return b.importe - a.importe; });
+    return { year: year, meses: meses, total: tot, pendientesPorComercio: comercios };
+  }
+
+  /** Meses ('YYYY-MM') completos en todos los años con datos. */
+  function completedMonths(movs, hoy) {
+    var years = {};
+    (movs || []).forEach(function (m) { years[m.fecha.slice(0, 4)] = 1; });
+    var out = [];
+    Object.keys(years).sort().forEach(function (y) {
+      classificationStatus(movs, y, hoy).meses.forEach(function (x) { if (x.completo) out.push(y + '-' + (x.mes < 10 ? '0' : '') + x.mes); });
+    });
+    return out;
+  }
+
+  /**
+   * Veredicto de un mes frente al presupuesto: 'ok' (enhorabuena), 'aviso' o 'alerta' (atención),
+   * o 'sin-ppto' si ese año no tiene presupuesto. Se mira el gasto y el ahorro del mes.
+   */
+  function monthVerdict(opts) {
+    var year = Number(opts.year), mes = Number(opts.mes);
+    var s = summarize({ year: year, partidas: opts.partidas, movimientos: opts.movimientos, presupuesto: opts.presupuesto, hasta: 12, umbrales: opts.umbrales });
+    var i = mes - 1, T = s.totales;
+    var g = { real: round2(T.Gasto.real[i]), ppto: round2(T.Gasto.ppto[i]) };
+    var ing = { real: round2(T.Ingreso.real[i]), ppto: round2(T.Ingreso.ppto[i]) };
+    var neto = { real: round2(s.neto.real[i]), ppto: round2(s.neto.ppto[i]) };
+    var nombre = MESES[i].charAt(0).toUpperCase() + MESES[i].slice(1) + ' ' + year;
+    var hayPpto = g.ppto > 0 || ing.ppto > 0;
+    var top = topDeviations({ year: year, partidas: opts.partidas, movimientos: opts.movimientos, presupuesto: opts.presupuesto, desde: mes, hasta: mes,
+      umbrales: opts.umbrales, minimo: (opts.umbrales && opts.umbrales.minimo) || 50, limit: 3 }).filter(function (e) { return e.impacto > 0; });
+    if (!hayPpto) {
+      return { tipo: 'sin-ppto', mes: mes, year: year, nombre: nombre, gasto: g, ingreso: ing, neto: neto, top: [],
+        titulo: nombre + ' está clasificado', texto: 'Gastasteis ' + fmt(g.real) + ' e ingresasteis ' + fmt(ing.real) + '. Este año no tiene presupuesto con el que comparar.' };
+    }
+    var estGasto = status('Gasto', g.real, g.ppto, opts.umbrales);
+    var estNeto = status('Ingreso', neto.real, neto.ppto, opts.umbrales);
+    var rank = { ok: 0, 'sin-ppto': 1, aviso: 1, alerta: 2 };
+    var tipo = rank[estGasto] >= rank[estNeto] ? estGasto : estNeto;
+    if (tipo === 'sin-ppto') tipo = 'aviso';
+    var dg = round2(g.real - g.ppto);
+    var base = 'Gasto ' + fmt(g.real) + ' frente a ' + fmt(g.ppto) + ' previstos (' + fmtSigned(dg) + '); ahorro ' + fmt(neto.real) + ' frente a ' + fmt(neto.ppto) + '.';
+    var lista = top.map(function (e) { return e.tipologia + ' (' + fmtSigned(e.impacto) + ')'; }).join(', ');
+    var titulo, texto;
+    if (tipo === 'ok') {
+      titulo = '¡Enhorabuena! ' + nombre + ' cerró en línea con el presupuesto';
+      texto = base + (dg < 0 ? ' Gastasteis menos de lo previsto.' : '');
+    } else {
+      titulo = (tipo === 'alerta' ? 'Atención: ' : 'Ojo: ') + nombre + ' se ha desviado del presupuesto';
+      texto = base + (lista ? ' Lo que más pesa: ' + lista + '.' : '');
+    }
+    return { tipo: tipo, mes: mes, year: year, nombre: nombre, gasto: g, ingreso: ing, neto: neto, top: top, titulo: titulo, texto: texto };
+  }
+
   // ---------------------------------------------------- asistente de presupuesto
 
   /**
@@ -1221,6 +1321,7 @@ var FB = (function () {
     realByLine: realByLine, budgetByLine: budgetByLine, lastMonthWithData: lastMonthWithData, status: status,
     summarize: summarize, forecast: forecast, detectManualEdits: detectManualEdits,
     compareYears: compareYears, proposeBudget: proposeBudget, detectPriceIncreases: detectPriceIncreases,
+    classificationStatus: classificationStatus, completedMonths: completedMonths, monthVerdict: monthVerdict,
     explainLine: explainLine, topDeviations: topDeviations,
     importFromBudgetWorkbook: importFromBudgetWorkbook, fmt: fmt, fmtSigned: fmtSigned
   };
@@ -1280,7 +1381,8 @@ var DEFAULT_CONFIG = {
   excelAuto: 'no',        // 'si' = exportar la copia .xlsx tras cada procesado diario
   asistente: '',          // parámetros y ajustes del asistente de presupuesto, por año (JSON)
   alertasVistas: '',      // subidas de recibos ya revisadas (JSON con sus claves)
-  procesadoAuto: 'mensual' // 'mensual' (día 1), 'diario' (solo si hay ficheros nuevos) o 'no'
+  procesadoAuto: 'mensual', // 'mensual' (día 1), 'diario' (solo si hay ficheros nuevos) o 'no'
+  mesesCompletos: ''       // meses ya celebrados/avisados ('YYYY-MM', JSON). Vacío = aún sin inicializar
 };
 
 // ------------------------------------------------------------------ arranque
@@ -1736,7 +1838,64 @@ function commit_(movs, opts) {
     if (!years || years.length) writeBudget_(budget, partidas, c.movimientos, years ? { years: years } : {});
   }
   writeReport_(c.movimientos, partidas, budget);
+  c.completados = checkCompletedMonths_(c.movimientos, partidas, budget);
   return c;
+}
+
+// ---------------------------------------------------------- meses completados
+
+/**
+ * Detecta los meses cuya clasificación acaba de completarse (todo revisado y el mes ya terminado),
+ * envía un correo a los usuarios autorizados y devuelve el veredicto de cada uno para que la app
+ * lo celebre. La primera vez solo memoriza los meses que ya estaban completos (sin avisar).
+ */
+function checkCompletedMonths_(movs, partidas, budget) {
+  var cfg = config_();
+  var ahora = FB.completedMonths(movs, FB.ymd(new Date()));
+  var primeraVez = !cfg.mesesCompletos;
+  if (primeraVez && !movs.length) return []; // sin movimientos aún: se inicializa en la primera carga real
+  var antes = [];
+  try { antes = JSON.parse(cfg.mesesCompletos || '[]'); } catch (e) { antes = []; }
+  var nuevos = ahora.filter(function (k) { return antes.indexOf(k) < 0; });
+  if (!primeraVez && !nuevos.length) return [];
+  var todos = antes.concat(nuevos).sort();
+  cfg.mesesCompletos = JSON.stringify(todos);
+  writeConfig_(cfg);
+  if (primeraVez) return [];
+  var u = umbrales_(cfg);
+  var veredictos = nuevos.map(function (k) {
+    return FB.monthVerdict({ year: Number(k.slice(0, 4)), mes: Number(k.slice(5, 7)), partidas: partidas, movimientos: movs, presupuesto: budget, umbrales: u });
+  });
+  var enviado = false;
+  try { enviado = sendCompletionEmail_(veredictos, cfg); } catch (e) { console.warn('No se pudo enviar el correo de mes completado: ' + e.message); }
+  veredictos.forEach(function (v) { v.correo = !!enviado; });
+  return veredictos;
+}
+
+function sendCompletionEmail_(veredictos, cfg) {
+  if (!veredictos.length) return false;
+  var to = (cfg.usuarios || '').split(/[,;\s]+/).filter(Boolean);
+  if (!to.length && user_()) to = [user_()];
+  if (!to.length) return false;
+  var url = '';
+  try { url = ScriptApp.getService().getUrl() || ''; } catch (e) { url = ''; }
+  var nombres = veredictos.map(function (v) { return v.nombre; });
+  var subject = '✅ ' + (nombres.length === 1 ? nombres[0] + ' clasificado al 100 %' : nombres.length + ' meses clasificados al 100 %: ' + nombres.join(', '));
+  var color = { ok: '#006300', aviso: '#8a5a00', alerta: '#b42323', 'sin-ppto': '#52514e' };
+  var esc = function (t) { return String(t).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var bloques = veredictos.map(function (v) {
+    return '<div style="border:1px solid #e1e0d9;border-radius:12px;padding:14px 16px;margin:12px 0">' +
+      '<div style="font-weight:700;font-size:16px;color:' + (color[v.tipo] || '#0b0b0b') + '">' + esc(v.titulo) + '</div>' +
+      '<div style="margin-top:6px;color:#0b0b0b">' + esc(v.texto) + '</div></div>';
+  }).join('');
+  var html = '<div style="font:15px/1.45 -apple-system,Segoe UI,sans-serif;max-width:560px;color:#0b0b0b">' +
+    '<p>Ya están clasificados todos los movimientos de ' + esc(nombres.join(', ')) + '. Buen trabajo.</p>' + bloques +
+    (url ? '<p><a href="' + esc(url) + '" style="display:inline-block;background:#2a78d6;color:#fff;text-decoration:none;padding:10px 16px;border-radius:10px;font-weight:600">Revisar en la app</a></p>' : '') +
+    '<p style="color:#898781;font-size:12px">Presupuesto familiar · aviso automático al completar la clasificación de un mes.</p></div>';
+  var texto = 'Ya están clasificados todos los movimientos de ' + nombres.join(', ') + '.\n\n' +
+    veredictos.map(function (v) { return v.titulo + '\n' + v.texto; }).join('\n\n') + (url ? '\n\nRevisar en la app: ' + url : '');
+  MailApp.sendEmail({ to: to.join(','), subject: subject, htmlBody: html, body: texto, name: 'Presupuesto familiar' });
+  return true;
 }
 
 // --------------------------------------------------------------- informe en la hoja
@@ -1916,7 +2075,7 @@ function processFolder_(opts) {
   if (opts.soloSiNuevos && !report.length) return { archivos: [], stats: null };
   var c = commit_(movs);
   writeArchivos_(Object.keys(known).map(function (k) { return known[k]; }));
-  return { archivos: report, stats: c.stats };
+  return { archivos: report, stats: c.stats, completados: c.completados };
 }
 
 function extractId_(s) {
@@ -1996,7 +2155,7 @@ function apiClassify(ids, tipologia, opts) {
       });
     }
     var c = commit_(movs, { reglas: rules });
-    return { stats: c.stats, movimientos: c.movimientos, reglas: rules };
+    return { stats: c.stats, movimientos: c.movimientos, reglas: rules, completados: c.completados };
   });
 }
 
@@ -2013,7 +2172,7 @@ function apiAcceptSuggestions(ids) {
       m.tipologia = t; m.estado = 'manual'; m.asignada = t; m.modificado = now; m.autor = me;
     });
     var c = commit_(movs);
-    return { stats: c.stats, movimientos: c.movimientos };
+    return { stats: c.stats, movimientos: c.movimientos, completados: c.completados };
   });
 }
 
@@ -2026,7 +2185,7 @@ function apiSaveRules(rules) {
     });
     writeRules_(clean);
     var c = commit_(readMovs_(), { reglas: clean });
-    return { stats: c.stats, movimientos: c.movimientos, reglas: clean };
+    return { stats: c.stats, movimientos: c.movimientos, reglas: clean, completados: c.completados };
   });
 }
 
@@ -2038,7 +2197,7 @@ function apiSavePartidas(partidas) {
     });
     writePartidas_(clean);
     var c = commit_(readMovs_(), { partidas: clean });
-    return { partidas: clean, movimientos: c.movimientos };
+    return { partidas: clean, movimientos: c.movimientos, completados: c.completados };
   });
 }
 
@@ -2073,7 +2232,7 @@ function apiReclassify() {
   checkAccess_();
   return withLock_(function () {
     var c = commit_(readMovs_());
-    return { stats: c.stats, movimientos: c.movimientos };
+    return { stats: c.stats, movimientos: c.movimientos, completados: c.completados };
   });
 }
 

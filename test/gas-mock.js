@@ -102,6 +102,7 @@ function loadServer(opts) {
   };
   const exported = [];
   const triggers = [];
+  const mails = [];
   const ctx = {
     console,
     SpreadsheetApp: {
@@ -147,6 +148,7 @@ function loadServer(opts) {
         remove: (id) => { delete spreadsheets[id]; }
       }
     },
+    MailApp: { sendEmail: (o) => { mails.push(o); } },
     UrlFetchApp: { fetch: () => ({ getResponseCode: () => 200, getBlob: () => ({ setName() { return this; }, setContentType() { return this; } }) }) },
     ScriptApp: {
       getOAuthToken: () => 'tok',
@@ -166,6 +168,7 @@ function loadServer(opts) {
   vm.runInContext(src('core.js').replace('if (typeof module', 'if (false && typeof module'), ctx, { filename: 'core.js' });
   vm.runInContext(src('server.js'), ctx, { filename: 'server.js' });
   ctx.__triggers = triggers;
+  ctx.__mails = mails;
   ctx.__book = book; ctx.__exported = exported; ctx.__files = files; ctx.__spreadsheets = spreadsheets;
   return ctx;
 }
